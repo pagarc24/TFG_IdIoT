@@ -9,11 +9,11 @@ NVD_API_KEY = "ENTER_API"
 NVD_API_RESULTS_PER_PAGE = 2000 ## This is the max allowed
 
 ## Using CPE for more accurate results other than keyword search
-OPENSSH_CPE = "cpe:2.3:a:openbsd:openssh:*:*:*:*:*:*:*:*"
-
+OPENSSH_CPE = "cpe:2.3:a:*:openssh:*:*:*:*:*:*:*:*"
+keywoards = "OpenSSH"
 
 def fetch_snap_packages():
-    result = subprocess.run(["sudo", "ls", "-l"], check=True, capture_output=True, text=True)
+    result = subprocess.run(["ls", "-l"], check=True, capture_output=True, text=True)
     return result.stdout.splitlines()
 
 def fetch_all_cve(cpe=None, keywords=None):
@@ -92,7 +92,7 @@ def fetch_all_cve(cpe=None, keywords=None):
         print("\nNo CVE IDs were ultimately collected.")                 
 
 if __name__ == "__main__":
-    """  # This block of code is checking whether an API key for the NVD API has been provided or not.
+    # This block of code is checking whether an API key for the NVD API has been provided or not.
     # Here's what it does:
     if NVD_API_KEY is None or NVD_API_KEY == "ENTER_API":
         print("#######################################")
@@ -105,9 +105,9 @@ if __name__ == "__main__":
         print("rate limited : 1 request per 0.6 seconds")
         print("#######################################")
         # Fetch all CVEs for OpenSSH using CPE
-    fetch_all_cve(cpe=OPENSSH_CPE) """
+    fetch_all_cve(keywords=keywoards)
     
     snap_packages = fetch_snap_packages()
-    print("Snap packages installed on the system:")
+    print("Test :")
     for package in snap_packages:
         print(package)
