@@ -91,7 +91,25 @@ def fetch_all_cve(cpe=None, keywords=None):
     else:
         print("\nNo CVE IDs were ultimately collected.")                 
 
+def snap_list():
+    process = subprocess.run(['snap', 'list'], capture_output=True, text=True)
+    out = process.stdout.strip().split('\n')[1:]#Quitamos la primera con los nombres de las columnas
+    snap_list = []
+    for paquete in out:
+        carac = paquete.split(maxsplit=4)#Extraemos las distintas caracteristicas
+        if len(carac) >= 5:
+            snap_list.append({
+                'nombre': carac[0],
+                'version': carac[1],
+                'publisher': carac[4]
+            })
+    return snap_list
+
 if __name__ == "__main__":
+    api_key_file = "../api_keys/nvd_api_key"
+    with open(api_key_file, 'r', encoding='utf-8') as file:
+        NVD_API_KEY = file.read()
+
     # This block of code is checking whether an API key for the NVD API has been provided or not.
     # Here's what it does:
     if NVD_API_KEY is None or NVD_API_KEY == "ENTER_API":
