@@ -8,6 +8,7 @@ NVD_API_BASE_URL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 NVD_API_KEY = "ENTER_API"
 NVD_API_RESULTS_PER_PAGE = 2000 ## This is the max allowed
 
+#TODO DELETE
 ## Using CPE for more accurate results other than keyword search
 OPENSSH_CPE = "cpe:2.3:a:*:openssh:*:*:*:*:*:*:*:*"
 keywoards = "OpenSSH"
@@ -96,14 +97,28 @@ def snap_list():
     out = process.stdout.strip().split('\n')[1:]#Quitamos la primera con los nombres de las columnas
     snap_list = []
     for paquete in out:
-        carac = paquete.split(maxsplit=4)#Extraemos las distintas caracteristicas
+        carac = paquete.split(maxsplit=5)#Extraemos las distintas caracteristicas
         if len(carac) >= 5:
             snap_list.append({
                 'nombre': carac[0],
                 'version': carac[1],
-                'publisher': carac[4]
+                'publisher': carac[4].replace("**","")
             })
     return snap_list
+
+def cpe_constructor(name, version, publisher):
+    CPE_NAME="cpe:2.3"
+    CPE_PART="a" #Application, siempre en nuestro caso
+    CPE_VENDOR=publisher
+    CPE_PRODUCT=name
+    CPE_PRODUCT_VERSION=version
+
+    res = CPE_NAME+":"+CPE_PART+":"+CPE_VENDOR+":"+CPE_PRODUCT+":"+CPE_PRODUCT_VERSION
+    # Se añaden comodines representan los campos [update]:[edition]:[language]:[sw_edition]:[target_sw]:[target_hw]:[other]
+    res = res + ":*:*:*:*:*:*:*"
+
+    return res
+
 
 if __name__ == "__main__":
     api_key_file = "../api_keys/nvd_api_key"
