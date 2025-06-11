@@ -1,17 +1,14 @@
 import requests
 import time
 import subprocess
+import datetime
 
 ## Configutation of API requests
 NVD_API_BASE_URL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 # API key for NVD API access
 NVD_API_KEY = "ENTER_API"
-NVD_API_RESULTS_PER_PAGE = 2000 ## This is the max allowed
 
-#TODO DELETE
-## Using CPE for more accurate results other than keyword search
-OPENSSH_CPE = "cpe:2.3:a:*:openssh:*:*:*:*:*:*:*:*"
-keywoards = "OpenSSH"
+filename = "system_analysis"
 
 def fetch_snap_packages():
     result = subprocess.run(["ls", "-l"], check=True, capture_output=True, text=True)
@@ -90,21 +87,37 @@ def fetch_all_cve(cpe=None, keywords=None):
         for cve_id in sorted(list(cve_ids)):
             print(cve_id)
     else:
-        print("\nNo CVE IDs were ultimately collected.")                 
+        print("\nNo CVE IDs were ultimately collected.")
+
+def parsing_response(content):#Comprobaciones
+    cve_ids=set()
+    #content['totalResults']
+    content = content.get("vulnerabilities", [])
+    for vulnerability in content:
+            cve_id = vulnerability.get("cve", {}).get("id")
+            if cve_id:
+                cve_ids.add(cve_id)
+
+    return cve_ids                 
 
 def snap_list():
     process = subprocess.run(['snap', 'list'], capture_output=True, text=True)
     out = process.stdout.strip().split('\n')[1:]#Quitamos la primera con los nombres de las columnas
-    snap_list = []
+    paquetes_snap = []
     for paquete in out:
         carac = paquete.split(maxsplit=5)#Extraemos las distintas caracteristicas
         if len(carac) >= 5:
-            snap_list.append({
-                'nombre': carac[0],
-                'version': carac[1],
-                'publisher': carac[4].replace("**","")
+            name = carac[0]
+            version = carac[1]
+            publisher = carac[4].replace("**","")
+            cpe = cpe_constructor(name,version,publisher)
+            paquetes_snap.append({
+                'name': name,
+                'version': version,
+                'publisher': publisher,
+                'cpe': cpe
             })
-    return snap_list
+    return paquetes_snap
 
 def cpe_constructor(name, version, publisher):
     CPE_NAME="cpe:2.3"
@@ -119,28 +132,63 @@ def cpe_constructor(name, version, publisher):
 
     return res
 
+def cpe_search(cpe):
+    headers = {}
+    if NVD_API_KEY is not None and NVD_API_KEY != "ENTER_API":
+        headers['apiKey'] = NVD_API_KEY
 
-if __name__ == "__main__":
+    params={}
+    params['virtualMatchString']=cpe
+
+    response = requests.get(NVD_API_BASE_URL, headers=headers, params=params)
+    return response.json() if response.status_code>=200 or response.status_code<300 else None
+
+def cve_search(cve):
+    url = f"{NVD_API_BASE_URL}?cveId={cve}"
+    headers = {}
+    if NVD_API_KEY is not None and NVD_API_KEY != "ENTER_API":
+        headers['apiKey'] = NVD_API_KEY
+
+    response = requests.get(url, headers=headers, params={})
+    return response.json() if response.status_code>=200 or response.status_code<300 else None
+
+def recolector():# Se encarga de recoger nombre, version y fabricante/publisher/vendor de distintos gestores
+    components=[]
+    components.extend(snap_list())
+    return components
+
+def get_token():
     api_key_file = "../api_keys/nvd_api_key"
     with open(api_key_file, 'r', encoding='utf-8') as file:
-        NVD_API_KEY = file.read()
+        token = file.read()
+    return token 
 
-    # This block of code is checking whether an API key for the NVD API has been provided or not.
-    # Here's what it does:
-    if NVD_API_KEY is None or NVD_API_KEY == "ENTER_API":
-        print("#######################################")
-        print("NO API KEY PROVIDED")
-        print("rate limited : 1 request per 6 seconds")
-        print("#######################################")
-    else:
-        print("#######################################")
-        print("API KEY PROVIDED")
-        print("rate limited : 1 request per 0.6 seconds")
-        print("#######################################")
-        # Fetch all CVEs for OpenSSH using CPE
-    fetch_all_cve(keywords=keywoards)
-    
-    snap_packages = fetch_snap_packages()
-    print("Test :")
-    for package in snap_packages:
-        print(package)
+def component_analysis(component):
+    return "None\n"
+
+def system_report(components):
+    f = open(filename, 'a')
+    for e in components:
+        analysis = component_analysis(e) #despues añadir analisis al fichero de report
+        print(analysis)
+        f.write(analysis)
+    f.close()
+
+def init():
+    msg = f"Analizando el sistema el {datetime.datetime.now()}\n"
+    print(msg)
+    f = open(filename, "w")
+    f.write(msg)
+    f.close()
+    NVD_API_KEY = get_token()
+
+
+
+if __name__ == "__main__":
+    init()
+
+    components = recolector()
+
+    system_report(components)
+
+    print(f"Análisis finalizado, puede consultar los resultados en el fichero {filename}")
