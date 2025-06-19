@@ -86,11 +86,21 @@ def parse_description(data, lang='en'):
     return desc
 
 def parse_metrics(data):
-    data = data['cvssMetricV31'][0]['cvssData']
+    metrics = {'cvssMetricV40': '4.0', 'cvssMetricV31': '3.1', 'cvssMetricV30': '3.0', 'cvssMetricV2': '2', 'cvssMetricV1': '1'}
+    cvss_metric = ''
+    version = ''
+
+    for m_k, m_v in metrics.items():
+        if m_k in data:
+            cvss_metric = m_k
+            version = m_v
+            break
+
+    data = data[cvss_metric][0]['cvssData']
     score = float(data['baseScore'])
-    vector = data['vectorString']
-    score_category = data['baseSeverity']
-    return score, vector, score_category
+    vector = {'value': data['vectorString']}
+    score_category = data['baseSeverity'] if 'baseSeverity' in data else 'N/A'
+    return score, version, vector, score_category
 
 def vulnerability_report(vulnerability):
     global HIGHLIGHT_REPORT
@@ -107,17 +117,17 @@ def vulnerability_report(vulnerability):
     fecha, hora = data['lastModified'].split('T')
     report+=f"\t- Last modified: {fecha} {hora}\n"
 
-    score, vector, score_category = parse_metrics(data['metrics'])
+    score, score_version, vectorstring, score_category = parse_metrics(data['metrics'])
 
-    report += f"\t- Score: {score} ({score_category})\n"
-    report += f"\t- Vector: {vector}\n"
+    report += f"\t- Score: {score} ({score_category}) - CVSS {score_version}\n"
+    report += f"\t- Vector: {vectorstring['value']}\n"
 
     cwe = data['weaknesses'][0]['description'][0]['value']
     report += f"\t- CWE: {cwe}\n"
 
     report += f"\n{parse_description(data['descriptions'])}\n"
 
-    to_highlight, criteria = must_be_highlighted(score_category)
+    to_highlight, criteria = must_be_highlighted(score_category, vectorstring)
     if to_highlight:
         report += f"******HIGHLIGHT CRITERIA******\n{criteria}\n"
         HIGHLIGHT_REPORT += report
@@ -126,13 +136,16 @@ def vulnerability_report(vulnerability):
 
     return report
 
-def must_be_highlighted(score_category):
+def must_be_highlighted(score_category, vectorstring):
     to_highlight = False
     criteria = ''
 
-    if score_category == "HIGH":
+    if score_category == "CRITICAL":
         to_highlight = True
-        criteria += '\t- High Category'
+        criteria += '\t- Critical Category\n'
+    elif score_category == "HIGH":
+        to_highlight = True
+        criteria += '\t- High Category\n'
 
     return to_highlight, criteria
 
@@ -193,10 +206,8 @@ if __name__ == "__main__":
     #TODO COMENTAR
     #components = []
     components.append({'name': 'MINA_SSHD', 'version': '1', 'publisher':'apache','cpe':'cpe:2.3:a:apache:mina_sshd:-:*:*:*:*:*:*:*'})
-    
+    components.append({'name': 'OPENSSH', 'version': '1.5', 'publisher': 'OPENBSD','cpe': 'cpe:2.3:a:openbsd:openssh:1.5:*:*:*:*:*:*:*'})
     system_report(components)
-
-    print(f"Analysis completed, you can check the results in the file {REPORT_FILENAME}")
 
     if HIGHLIGHT_REPORT != '':
         h_msg = "\n=========================\n"
@@ -206,6 +217,7 @@ if __name__ == "__main__":
         h_msg += "=========================\n"
         print(h_msg)
     
+    print(f"Analysis completed, you can check the results in the file {REPORT_FILENAME}")
     summary = f"""\nSUMMARY:
     - Analyzed components: {N_COMPONENTS}
     - Detected vulnerabilities: {N_VULNERABILITIES}
