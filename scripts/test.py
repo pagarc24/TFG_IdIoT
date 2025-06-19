@@ -11,8 +11,12 @@ NVD_API_KEY = "ENTER_API"
 
 REPORT_FILENAME = "system_analysis"
 
-THRESHOLD_SCORE = 9
+THRESHOLD_SCORE = 0
 HIGHLIGHT_REPORT = ''
+
+N_COMPONENTS = 0
+N_VULNERABILITIES = 0
+N_VULNERABILITIES_HIGHLIGHTED = 0
 
 def snap_list():
     process = subprocess.run(['snap', 'list'], capture_output=True, text=True)
@@ -90,6 +94,7 @@ def parse_metrics(data):
 
 def vulnerability_report(vulnerability):
     global HIGHLIGHT_REPORT
+    global N_VULNERABILITIES_HIGHLIGHTED
 
     report = ''
 
@@ -107,15 +112,24 @@ def vulnerability_report(vulnerability):
     report += f"\t- Score: {score}\n"
     report += f"\t- Vector: {vector}\n"
 
+    cwe = data['weaknesses'][0]['description'][0]['value']
+    report += f"\t- CWE: {cwe}\n"
+
     report += f"\n{parse_description(data['descriptions'])}\n"
 
-    if score >= THRESHOLD_SCORE:
+    if must_be_highlighted(score):
         HIGHLIGHT_REPORT += report
-        report = "*****ATTENTION*****\n"+report+"*******************\n"
+        N_VULNERABILITIES_HIGHLIGHTED += 1
+        report = "********ATTENTION********\n"+report+"*************************\n"
 
     return report
 
+def must_be_highlighted(score):
+    return score >= THRESHOLD_SCORE
+
 def component_analysis(component):
+    global N_VULNERABILITIES
+
     analysis = f"\t{component['name']}\n"
     analysis += f"- Vendor: {component['publisher']}\n"
     analysis += f"- Version: {component['version']}\n"
@@ -130,15 +144,24 @@ def component_analysis(component):
     else:
         analysis += f"- Number of vulnerabilities: {nres}\n"
         vuls = vuls['vulnerabilities']
+        N_VULNERABILITIES += len(vuls)
         for v in vuls:
             analysis += f"\n{vulnerability_report(v)}\n"
     return analysis
 
 def system_report(components):
+    global N_COMPONENTS
+
     f = open(REPORT_FILENAME, 'a')
-    for e in components:
-        analysis = f"{component_analysis(e)}\n"
-        f.write(analysis)
+    N_COMPONENTS = len(components)
+    if N_COMPONENTS <= 0:
+        msg = "No components were detected for analysis on this system"
+        print(msg)
+        f.write(f"{msg}\n")
+    else:
+        for e in components:
+            analysis = f"{component_analysis(e)}\n"
+            f.write(analysis)
     f.close()
 
 def init():
@@ -167,6 +190,14 @@ if __name__ == "__main__":
     print(f"Analysis completed, you can check the results in the file {REPORT_FILENAME}")
 
     if HIGHLIGHT_REPORT != '':
-        h_msg = f"Attention: the following vulnerabilities have been detected with a score higher than {THRESHOLD_SCORE}. For the security of the system, it is important that you review them.\n"
+        h_msg = f"Attention: Some detected vulnerabilities meet critical criteria for this system. To ensure its security, they must be reviewed.\n"
+        h_msg += "\tHIGHLIGHT REPORT\n"
         h_msg += HIGHLIGHT_REPORT
+        h_msg += "=========================\n"
         print(h_msg)
+    
+    summary = f"""SUMMARY
+    - Analyzed components: {N_COMPONENTS}
+    - Detected vulnerabilities: {N_VULNERABILITIES}
+    - Detected critical vulnerabilities: {N_VULNERABILITIES_HIGHLIGHTED}"""
+    print(summary)
