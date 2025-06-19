@@ -11,7 +11,6 @@ NVD_API_KEY = "ENTER_API"
 
 REPORT_FILENAME = "system_analysis"
 
-THRESHOLD_SCORE = 0
 HIGHLIGHT_REPORT = ''
 
 N_COMPONENTS = 0
@@ -90,7 +89,8 @@ def parse_metrics(data):
     data = data['cvssMetricV31'][0]['cvssData']
     score = float(data['baseScore'])
     vector = data['vectorString']
-    return score, vector
+    score_category = data['baseSeverity']
+    return score, vector, score_category
 
 def vulnerability_report(vulnerability):
     global HIGHLIGHT_REPORT
@@ -107,9 +107,9 @@ def vulnerability_report(vulnerability):
     fecha, hora = data['lastModified'].split('T')
     report+=f"\t- Last modified: {fecha} {hora}\n"
 
-    score, vector = parse_metrics(data['metrics'])
+    score, vector, score_category = parse_metrics(data['metrics'])
 
-    report += f"\t- Score: {score}\n"
+    report += f"\t- Score: {score} ({score_category})\n"
     report += f"\t- Vector: {vector}\n"
 
     cwe = data['weaknesses'][0]['description'][0]['value']
@@ -117,15 +117,24 @@ def vulnerability_report(vulnerability):
 
     report += f"\n{parse_description(data['descriptions'])}\n"
 
-    if must_be_highlighted(score):
+    to_highlight, criteria = must_be_highlighted(score_category)
+    if to_highlight:
+        report += f"******HIGHLIGHT CRITERIA******\n{criteria}\n"
         HIGHLIGHT_REPORT += report
         N_VULNERABILITIES_HIGHLIGHTED += 1
         report = "********ATTENTION********\n"+report+"*************************\n"
 
     return report
 
-def must_be_highlighted(score):
-    return score >= THRESHOLD_SCORE
+def must_be_highlighted(score_category):
+    to_highlight = False
+    criteria = ''
+
+    if score_category == "HIGH":
+        to_highlight = True
+        criteria += '\t- High Category'
+
+    return to_highlight, criteria
 
 def component_analysis(component):
     global N_VULNERABILITIES
@@ -190,13 +199,14 @@ if __name__ == "__main__":
     print(f"Analysis completed, you can check the results in the file {REPORT_FILENAME}")
 
     if HIGHLIGHT_REPORT != '':
-        h_msg = f"Attention: Some detected vulnerabilities meet critical criteria for this system. To ensure its security, they must be reviewed.\n"
-        h_msg += "\tHIGHLIGHT REPORT\n"
+        h_msg = "\n=========================\n"
+        h_msg += f"ATTENTION: Some detected vulnerabilities meet critical criteria for this system. To ensure its security, they must be reviewed.\n"
+        h_msg += "************HIGHLIGHT REPORT************\n"
         h_msg += HIGHLIGHT_REPORT
         h_msg += "=========================\n"
         print(h_msg)
     
-    summary = f"""SUMMARY
+    summary = f"""\nSUMMARY:
     - Analyzed components: {N_COMPONENTS}
     - Detected vulnerabilities: {N_VULNERABILITIES}
     - Detected critical vulnerabilities: {N_VULNERABILITIES_HIGHLIGHTED}"""
