@@ -1,5 +1,4 @@
 import requests
-import time
 import subprocess
 import datetime
 import distro
@@ -18,23 +17,27 @@ N_VULNERABILITIES = 0
 N_VULNERABILITIES_HIGHLIGHTED = 0
 
 def snap_list():
-    process = subprocess.run(['snap', 'list'], capture_output=True, text=True)
-    out = process.stdout.strip().split('\n')[1:]#Quitamos la primera con los nombres de las columnas
-    paquetes_snap = []
-    for paquete in out:
-        carac = paquete.split(maxsplit=5)#Extraemos las distintas caracteristicas
-        if len(carac) >= 5:
-            name = carac[0]
-            version = carac[1]
-            publisher = carac[4].replace("**","")
-            cpe = cpe_constructor(name,version,publisher)
-            paquetes_snap.append({
-                'name': name,
-                'version': version,
-                'publisher': publisher,
-                'cpe': cpe
-            })
-    return paquetes_snap
+    try:
+        paquetes_snap = []
+        process = subprocess.run(['snap', 'list'], capture_output=True, text=True)
+        out = process.stdout.strip().split('\n')[1:]#Quitamos la primera con los nombres de las columnas
+        
+        for paquete in out:
+            carac = paquete.split(maxsplit=5)#Extraemos las distintas caracteristicas
+            if len(carac) >= 5:
+                name = carac[0]
+                version = carac[1]
+                publisher = carac[4].replace("**","")
+                cpe = cpe_constructor(name,version,publisher)
+                paquetes_snap.append({
+                    'name': name,
+                    'version': version,
+                    'publisher': publisher,
+                    'cpe': cpe
+                })
+        return paquetes_snap
+    except:
+        return []
 
 def cpe_constructor(name, version, publisher):
     CPE_NAME="cpe:2.3"
@@ -60,8 +63,20 @@ def cpe_search(cpe):
     return response.json() if 200<=response.status_code<300 else None
 
 def collector():# Se encarga de recoger nombre, version y fabricante/publisher/vendor de distintos gestores
+    msg = '========PACKAGES========\n'
+
     components=[]
-    components.extend(snap_list())
+
+    snap_components = snap_list()
+    components.extend(snap_components)
+    msg += f"- Number of snap-type packages: {len(snap_components)}\n"
+
+    msg += '========================\n'
+    f = open(REPORT_FILENAME, "a")
+    f.write(msg)
+    f.write("\n")
+    f.close()
+
     return components
 
 def get_token():
@@ -98,7 +113,7 @@ def parse_metrics(data):
 
     data = data[cvss_metric][0]['cvssData']
     score = float(data['baseScore'])
-    vector = {'value': data['vectorString']}
+    vector = data['vectorString']
     score_category = data['baseSeverity'] if 'baseSeverity' in data else 'N/A'
     return score, version, vector, score_category
 
@@ -120,7 +135,7 @@ def vulnerability_report(vulnerability):
     score, score_version, vectorstring, score_category = parse_metrics(data['metrics'])
 
     report += f"\t- Score: {score} ({score_category}) - CVSS {score_version}\n"
-    report += f"\t- Vector: {vectorstring['value']}\n"
+    report += f"\t- Vector: {vectorstring}\n"
 
     cwe = data['weaknesses'][0]['description'][0]['value']
     report += f"\t- CWE: {cwe}\n"
@@ -146,6 +161,10 @@ def must_be_highlighted(score_category, vectorstring):
     elif score_category == "HIGH":
         to_highlight = True
         criteria += '\t- High Category\n'
+
+    if vectorstring != '':
+        vector_dict = {str(i.split(':')[0]): str(i.split(':')[1]) for i in vectorstring.split("/")}
+        criteria+=f'\n{vector_dict}\n'
 
     return to_highlight, criteria
 
@@ -205,7 +224,7 @@ if __name__ == "__main__":
 
     #TODO COMENTAR
     #components = []
-    components.append({'name': 'MINA_SSHD', 'version': '1', 'publisher':'apache','cpe':'cpe:2.3:a:apache:mina_sshd:-:*:*:*:*:*:*:*'})
+    components.append({'name': 'MINA_SSHD', 'version': '-', 'publisher':'Apache','cpe':'cpe:2.3:a:apache:mina_sshd:-:*:*:*:*:*:*:*'})
     components.append({'name': 'OPENSSH', 'version': '1.5', 'publisher': 'OPENBSD','cpe': 'cpe:2.3:a:openbsd:openssh:1.5:*:*:*:*:*:*:*'})
     system_report(components)
 
