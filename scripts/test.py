@@ -3,6 +3,11 @@ import subprocess
 import datetime
 import distro
 
+import os
+import zipfile
+import io
+import xml.etree.ElementTree as ET
+
 ## Configutation of API requests
 NVD_API_BASE_URL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 # API key for NVD API access
@@ -15,6 +20,8 @@ HIGHLIGHT_REPORT = ''
 N_COMPONENTS = 0
 N_VULNERABILITIES = 0
 N_VULNERABILITIES_HIGHLIGHTED = 0
+
+CWE_DICT = {}
 
 def snap_list():
     try:
@@ -137,8 +144,8 @@ def vulnerability_report(vulnerability):
     report += f"\t- Score: {score} ({score_category}) - CVSS {score_version}\n"
     report += f"\t- Vector: {vectorstring}\n"
 
-    cwe = data['weaknesses'][0]['description'][0]['value']
-    report += f"\t- CWE: {cwe}\n"
+    cwe_string = cwe_transform(data['weaknesses'][0]['description'][0]['value'])
+    report += f"\t- {cwe_string}\n"
 
     report += f"\n{parse_description(data['descriptions'])}\n"
 
@@ -151,6 +158,9 @@ def vulnerability_report(vulnerability):
 
     return report
 
+def cwe_transform(data):
+    return f"{data}: {CWE_DICT[data]}" if data in CWE_DICT else data
+
 def must_be_highlighted(score_category, vectorstring):
     to_highlight = False
     criteria = ''
@@ -158,13 +168,65 @@ def must_be_highlighted(score_category, vectorstring):
     if score_category == "CRITICAL":
         to_highlight = True
         criteria += '\t- Critical Category\n'
-    elif score_category == "HIGH":
+    """elif score_category == "HIGH":
         to_highlight = True
-        criteria += '\t- High Category\n'
+        criteria += '\t- High Category\n'"""
 
     if vectorstring != '':
         vector_dict = {str(i.split(':')[0]): str(i.split(':')[1]) for i in vectorstring.split("/")}
-        criteria+=f'\n{vector_dict}\n'
+        vector_dict['CVSS'] = '2' if 'CVSS' not in vector_dict else vector_dict['CVSS']
+        #criteria+=f'\n{vector_dict}\n'
+
+        if vector_dict['CVSS'] == '2':
+            if 'AV' in vector_dict and vector_dict['AV'] == 'N':
+                to_highlight = True
+                criteria += '\t- Remotely exploitable\n'
+            if 'AC' in vector_dict and vector_dict['AC'] == 'L':
+                to_highlight = True
+                criteria += '\t- Low complexity access\n'
+            if 'Au' in vector_dict and vector_dict['Au'] == 'N':
+                to_highlight = True
+                criteria += '\t- No authentication required to exploit the vulnerability\n'
+            if 'C' in vector_dict and vector_dict['C'] == 'C':
+                to_highlight = True
+                criteria += '\t- Complete impact on data confidentiality\n'
+            if 'I' in vector_dict and vector_dict['I'] == 'C':
+                to_highlight = True
+                criteria += '\t- Complete impact on system integrity\n'
+            if 'A' in vector_dict and vector_dict['A'] == 'C':
+                to_highlight = True
+                criteria += '\t- Complete impact on system availability\n'
+        elif vector_dict['CVSS'] == '3.0' or vector_dict['CVSS'] == '3.1':
+            if 'AV' in vector_dict and vector_dict['AV'] == 'N':
+                to_highlight = True
+                criteria += '\t- Remotely exploitable\n'
+            if 'AC' in vector_dict and vector_dict['AC'] == 'L':
+                to_highlight = True
+                criteria += '\t- Low complexity access\n'
+            if 'PR' in vector_dict and vector_dict['PR'] == 'N':
+                to_highlight = True
+                criteria += '\t- Attacker does not required any privileges to attack the system\n'
+            if 'UI' in vector_dict and vector_dict['UI'] == 'N':
+                to_highlight = True
+                criteria += '\t- The vulnerability can be exploited without interaction from any user\n'
+            if 'S' in vector_dict and vector_dict['S'] == 'C':
+                to_highlight = True
+                criteria += '\t- The vulnerability can affect other components\n'
+            if 'C' in vector_dict and vector_dict['C'] == 'H':
+                to_highlight = True
+                criteria += '\t- Complete impact on data confidentiality\n'
+            if 'I' in vector_dict and vector_dict['I'] == 'H':
+                to_highlight = True
+                criteria += '\t- Complete impact on system integrity\n'
+            if 'A' in vector_dict and vector_dict['A'] == 'H':
+                to_highlight = True
+                criteria += '\t- Complete impact on system availability\n'
+        """
+        elif vector_dict['CVSS'] == '4.0':
+            to_highlight = True
+            criteria+=f'\n{vector_dict}\n'
+        """
+        #Include some CWE
 
     return to_highlight, criteria
 
@@ -205,12 +267,45 @@ def system_report(components):
             f.write(analysis)
     f.close()
 
+def init_cwe_dict():
+    global CWE_DICT
+
+    CWE_ZIP_URL = "https://cwe.mitre.org/data/xml/cwec_v4.12.xml.zip"
+    CWE_DIR = "cwe_data"
+    CWE_XML_PATH = os.path.join(CWE_DIR, "cwec_v4.12.xml")
+
+    if not os.path.exists(CWE_XML_PATH):
+        try:
+            os.makedirs(CWE_DIR, exist_ok=True)
+            response = requests.get(CWE_ZIP_URL)
+            response.raise_for_status()
+            with zipfile.ZipFile(io.BytesIO(response.content)) as z:
+                z.extractall(CWE_DIR)
+        except Exception as e:
+            return
+
+    try:
+        tree = ET.parse(CWE_XML_PATH)
+        root = tree.getroot()
+        ns = {'cwe': 'http://cwe.mitre.org/cwe-7'}
+
+        for weakness in root.findall('.//cwe:Weakness', ns):
+            cwe_id = f"CWE-{weakness.attrib.get('ID')}"
+            name = weakness.attrib.get('Name')
+            if cwe_id and name:
+                CWE_DICT[cwe_id] = name
+    except Exception as e:
+        return
+
 def init():
     global NVD_API_KEY
 
     msg = f"{distro.name()} {distro.version()}\n"
     msg += f"Analyzing the system on {datetime.datetime.now()}"
     print(msg)
+
+    init_cwe_dict()
+
     f = open(REPORT_FILENAME, "w")
     f.write(msg)
     f.write("\n\n")
@@ -240,5 +335,5 @@ if __name__ == "__main__":
     summary = f"""\nSUMMARY:
     - Analyzed components: {N_COMPONENTS}
     - Detected vulnerabilities: {N_VULNERABILITIES}
-    - Detected critical vulnerabilities: {N_VULNERABILITIES_HIGHLIGHTED}"""
+    - Number of significant detected vulnerabilities: {N_VULNERABILITIES_HIGHLIGHTED}"""
     print(summary)
