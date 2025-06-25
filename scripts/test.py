@@ -70,6 +70,10 @@ def cpe_search(cpe):
     return response.json() if 200<=response.status_code<300 else None
 
 def collector():# Se encarga de recoger nombre, version y fabricante/publisher/vendor de distintos gestores
+    """ TODO Crear otros recolectores de paquetes, dpkg por ejemplo. Si no es posible obtener el publisher 
+    o la versión se marca el comodín y se le añade al componente un elemento que indica que no tiene 
+    porque ser al cien por cien el que está en el sistema"""
+
     msg = '========PACKAGES========\n'
 
     components=[]
@@ -144,12 +148,13 @@ def vulnerability_report(vulnerability):
     report += f"\t- Score: {score} ({score_category}) - CVSS {score_version}\n"
     report += f"\t- Vector: {vectorstring}\n"
 
-    cwe_string = cwe_transform(data['weaknesses'][0]['description'][0]['value'])
+    cwe = data['weaknesses'][0]['description'][0]['value']
+    cwe_string = cwe_transform(cwe)
     report += f"\t- {cwe_string}\n"
 
     report += f"\n{parse_description(data['descriptions'])}\n"
 
-    to_highlight, criteria = must_be_highlighted(score_category, vectorstring)
+    to_highlight, criteria = must_be_highlighted(score_category, vectorstring, cwe)
     if to_highlight:
         report += f"******HIGHLIGHT CRITERIA******\n{criteria}\n"
         HIGHLIGHT_REPORT += report
@@ -161,10 +166,11 @@ def vulnerability_report(vulnerability):
 def cwe_transform(data):
     return f"{data}: {CWE_DICT[data]}" if data in CWE_DICT else data
 
-def must_be_highlighted(score_category, vectorstring):
+def must_be_highlighted(score_category, vectorstring, cwe):#TODO - Revisar criterios, hay demasiado, especialmente en el vector string
     to_highlight = False
     criteria = ''
 
+    #Score Category Criteria
     if score_category == "CRITICAL":
         to_highlight = True
         criteria += '\t- Critical Category\n'
@@ -172,6 +178,7 @@ def must_be_highlighted(score_category, vectorstring):
         to_highlight = True
         criteria += '\t- High Category\n'"""
 
+    #Vector String Criteria
     if vectorstring != '':
         vector_dict = {str(i.split(':')[0]): str(i.split(':')[1]) for i in vectorstring.split("/")}
         vector_dict['CVSS'] = '2' if 'CVSS' not in vector_dict else vector_dict['CVSS']
@@ -221,12 +228,38 @@ def must_be_highlighted(score_category, vectorstring):
             if 'A' in vector_dict and vector_dict['A'] == 'H':
                 to_highlight = True
                 criteria += '\t- Complete impact on system availability\n'
-        """
         elif vector_dict['CVSS'] == '4.0':
+            print(vector_dict.keys())
+            if 'AV' in vector_dict and vector_dict['AV'] == 'N':
+                to_highlight = True
+                criteria += '\t- Remotely exploitable\n'
+            if 'AC' in vector_dict and vector_dict['AC'] == 'L':
+                to_highlight = True
+                criteria += '\t- Low complexity access\n'
+            if 'AT' in vector_dict and vector_dict['AT'] == 'N':#
+                to_highlight = True
+                criteria += '\t- Does not depend on specific conditions\n'
+            if 'PR' in vector_dict and vector_dict['PR'] == 'N':
+                to_highlight = True
+                criteria += '\t- Attacker does not required any privileges to attack the system\n'
+            if 'UI' in vector_dict and vector_dict['UI'] == 'N':
+                to_highlight = True
+                criteria += '\t- The vulnerability can be exploited without interaction from any user\n'
+            if ('VC' in vector_dict and vector_dict['VC'] == 'H') or ('SC' in vector_dict and vector_dict['SC'] == 'H'):
+                to_highlight = True
+                criteria += '\t- Complete impact on data confidentiality\n'
+            if ('VI' in vector_dict and vector_dict['VI'] == 'H') or ('SI' in vector_dict and vector_dict['SI'] == 'H'):
+                to_highlight = True
+                criteria += '\t- Complete impact on system integrity\n'
+            if ('VA' in vector_dict and vector_dict['VA'] == 'H') or ('SA' in vector_dict and vector_dict['SA'] == 'H'):
+                to_highlight = True
+                criteria += '\t- Complete impact on system availability\n'
+        
+        #CWE Criteria
+        #Following https://cwe.mitre.org/top25/ (2024), we choose the top 5 dangerous CWE
+        if cwe in ['CWE-79', 'CWE-787', 'CWE-89', 'CWE-352', 'CWE-22']:
             to_highlight = True
-            criteria+=f'\n{vector_dict}\n'
-        """
-        #Include some CWE
+            criteria += '\t- The CWE associated with this vulnerability is in the top 5 (2024) most dangerous CWE\n'
 
     return to_highlight, criteria
 
@@ -321,6 +354,7 @@ if __name__ == "__main__":
     #components = []
     components.append({'name': 'MINA_SSHD', 'version': '-', 'publisher':'Apache','cpe':'cpe:2.3:a:apache:mina_sshd:-:*:*:*:*:*:*:*'})
     components.append({'name': 'OPENSSH', 'version': '1.5', 'publisher': 'OPENBSD','cpe': 'cpe:2.3:a:openbsd:openssh:1.5:*:*:*:*:*:*:*'})
+    components.append({'name': 'DREAMER_CMS', 'version': '-', 'publisher': 'iteachyou', 'cpe': 'cpe:2.3:a:iteachyou:dreamer_cms:-:*:*:*:*:*:*:*'})
     system_report(components)
 
     if HIGHLIGHT_REPORT != '':
