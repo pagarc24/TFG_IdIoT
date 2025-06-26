@@ -13,15 +13,44 @@ NVD_API_BASE_URL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 # API key for NVD API access
 NVD_API_KEY = "ENTER_API"
 
-REPORT_FILENAME = "system_analysis"
+REPORT_FILENAME = "system_analysis.txt"
 
 HIGHLIGHT_REPORT = ''
 
 N_COMPONENTS = 0
 N_VULNERABILITIES = 0
 N_VULNERABILITIES_HIGHLIGHTED = 0
+N_NON_CONFIRMED_VULNERABILITIES = 0
 
 CWE_DICT = {}
+
+def dpkg_list():
+    try:
+        paquetes_dpkg = []
+        process = subprocess.run(['dpkg', '-l'], capture_output=True, text=True)
+        out = process.stdout.strip().split('\n')[5:]
+
+        for paquete in out:
+            if not paquete.startswith('ii'):# dpkg -l starts with ii when the package is installed
+                continue
+
+            carac = paquete.split(maxsplit=4)
+            if len(carac) >= 3:
+                name = carac[1]
+                version = carac[2]
+                publisher = "*"  # info not available from dpkg -l
+                cpe = cpe_constructor(name, version, publisher)
+
+                paquetes_dpkg.append({
+                    'name': name,
+                    'version': version,
+                    'publisher': publisher,
+                    'cpe': cpe,
+                    'dataConfirmed': False
+                })
+        return paquetes_dpkg
+    except:
+        return []
 
 def snap_list():
     try:
@@ -40,7 +69,8 @@ def snap_list():
                     'name': name,
                     'version': version,
                     'publisher': publisher,
-                    'cpe': cpe
+                    'cpe': cpe,
+                    'dataConfirmed': True
                 })
         return paquetes_snap
     except:
@@ -81,6 +111,10 @@ def collector():# Se encarga de recoger nombre, version y fabricante/publisher/v
     snap_components = snap_list()
     components.extend(snap_components)
     msg += f"- Number of snap-type packages: {len(snap_components)}\n"
+
+    dpkg_components = dpkg_list()
+    components.extend(dpkg_components)
+    msg += f"- Number of dpkg-type packages: {len(dpkg_components)}\n"
 
     msg += '========================\n'
     f = open(REPORT_FILENAME, "a")
@@ -128,9 +162,10 @@ def parse_metrics(data):
     score_category = data['baseSeverity'] if 'baseSeverity' in data else 'N/A'
     return score, version, vector, score_category
 
-def vulnerability_report(vulnerability):
+def vulnerability_report(vulnerability, vulnerabiltyConfirmed):
     global HIGHLIGHT_REPORT
     global N_VULNERABILITIES_HIGHLIGHTED
+    global N_NON_CONFIRMED_VULNERABILITIES
 
     report = ''
 
@@ -154,11 +189,14 @@ def vulnerability_report(vulnerability):
 
     report += f"\n{parse_description(data['descriptions'])}\n"
 
-    to_highlight, criteria = must_be_highlighted(score_category, vectorstring, cwe)
+    to_highlight, criteria = must_be_highlighted(score_category, vectorstring, cwe, vulnerabiltyConfirmed)
     if to_highlight:
         report += f"******HIGHLIGHT CRITERIA******\n{criteria}\n"
         HIGHLIGHT_REPORT += report
-        N_VULNERABILITIES_HIGHLIGHTED += 1
+        if vulnerabiltyConfirmed:
+            N_VULNERABILITIES_HIGHLIGHTED += 1
+        else:
+            N_NON_CONFIRMED_VULNERABILITIES += 1
         report = "********ATTENTION********\n"+report+"*************************\n"
 
     return report
@@ -166,100 +204,103 @@ def vulnerability_report(vulnerability):
 def cwe_transform(data):
     return f"{data}: {CWE_DICT[data]}" if data in CWE_DICT else data
 
-def must_be_highlighted(score_category, vectorstring, cwe):#TODO - Revisar criterios, hay demasiado, especialmente en el vector string
+def must_be_highlighted(score_category, vectorstring, cwe, vulnerabiltyConfirmed):#TODO - Revisar criterios, hay demasiado, especialmente en el vector string
     to_highlight = False
     criteria = ''
 
-    #Score Category Criteria
-    if score_category == "CRITICAL":
-        to_highlight = True
-        criteria += '\t- Critical Category\n'
-    """elif score_category == "HIGH":
-        to_highlight = True
-        criteria += '\t- High Category\n'"""
-
-    #Vector String Criteria
-    if vectorstring != '':
-        vector_dict = {str(i.split(':')[0]): str(i.split(':')[1]) for i in vectorstring.split("/")}
-        vector_dict['CVSS'] = '2' if 'CVSS' not in vector_dict else vector_dict['CVSS']
-        #criteria+=f'\n{vector_dict}\n'
-
-        if vector_dict['CVSS'] == '2':
-            if 'AV' in vector_dict and vector_dict['AV'] == 'N':
-                to_highlight = True
-                criteria += '\t- Remotely exploitable\n'
-            if 'AC' in vector_dict and vector_dict['AC'] == 'L':
-                to_highlight = True
-                criteria += '\t- Low complexity access\n'
-            if 'Au' in vector_dict and vector_dict['Au'] == 'N':
-                to_highlight = True
-                criteria += '\t- No authentication required to exploit the vulnerability\n'
-            if 'C' in vector_dict and vector_dict['C'] == 'C':
-                to_highlight = True
-                criteria += '\t- Complete impact on data confidentiality\n'
-            if 'I' in vector_dict and vector_dict['I'] == 'C':
-                to_highlight = True
-                criteria += '\t- Complete impact on system integrity\n'
-            if 'A' in vector_dict and vector_dict['A'] == 'C':
-                to_highlight = True
-                criteria += '\t- Complete impact on system availability\n'
-        elif vector_dict['CVSS'] == '3.0' or vector_dict['CVSS'] == '3.1':
-            if 'AV' in vector_dict and vector_dict['AV'] == 'N':
-                to_highlight = True
-                criteria += '\t- Remotely exploitable\n'
-            if 'AC' in vector_dict and vector_dict['AC'] == 'L':
-                to_highlight = True
-                criteria += '\t- Low complexity access\n'
-            if 'PR' in vector_dict and vector_dict['PR'] == 'N':
-                to_highlight = True
-                criteria += '\t- Attacker does not required any privileges to attack the system\n'
-            if 'UI' in vector_dict and vector_dict['UI'] == 'N':
-                to_highlight = True
-                criteria += '\t- The vulnerability can be exploited without interaction from any user\n'
-            if 'S' in vector_dict and vector_dict['S'] == 'C':
-                to_highlight = True
-                criteria += '\t- The vulnerability can affect other components\n'
-            if 'C' in vector_dict and vector_dict['C'] == 'H':
-                to_highlight = True
-                criteria += '\t- Complete impact on data confidentiality\n'
-            if 'I' in vector_dict and vector_dict['I'] == 'H':
-                to_highlight = True
-                criteria += '\t- Complete impact on system integrity\n'
-            if 'A' in vector_dict and vector_dict['A'] == 'H':
-                to_highlight = True
-                criteria += '\t- Complete impact on system availability\n'
-        elif vector_dict['CVSS'] == '4.0':
-            print(vector_dict.keys())
-            if 'AV' in vector_dict and vector_dict['AV'] == 'N':
-                to_highlight = True
-                criteria += '\t- Remotely exploitable\n'
-            if 'AC' in vector_dict and vector_dict['AC'] == 'L':
-                to_highlight = True
-                criteria += '\t- Low complexity access\n'
-            if 'AT' in vector_dict and vector_dict['AT'] == 'N':#
-                to_highlight = True
-                criteria += '\t- Does not depend on specific conditions\n'
-            if 'PR' in vector_dict and vector_dict['PR'] == 'N':
-                to_highlight = True
-                criteria += '\t- Attacker does not required any privileges to attack the system\n'
-            if 'UI' in vector_dict and vector_dict['UI'] == 'N':
-                to_highlight = True
-                criteria += '\t- The vulnerability can be exploited without interaction from any user\n'
-            if ('VC' in vector_dict and vector_dict['VC'] == 'H') or ('SC' in vector_dict and vector_dict['SC'] == 'H'):
-                to_highlight = True
-                criteria += '\t- Complete impact on data confidentiality\n'
-            if ('VI' in vector_dict and vector_dict['VI'] == 'H') or ('SI' in vector_dict and vector_dict['SI'] == 'H'):
-                to_highlight = True
-                criteria += '\t- Complete impact on system integrity\n'
-            if ('VA' in vector_dict and vector_dict['VA'] == 'H') or ('SA' in vector_dict and vector_dict['SA'] == 'H'):
-                to_highlight = True
-                criteria += '\t- Complete impact on system availability\n'
-        
-        #CWE Criteria
-        #Following https://cwe.mitre.org/top25/ (2024), we choose the top 5 dangerous CWE
-        if cwe in ['CWE-79', 'CWE-787', 'CWE-89', 'CWE-352', 'CWE-22']:
+    if vulnerabiltyConfirmed:
+        #Score Category Criteria
+        if score_category == "CRITICAL":
             to_highlight = True
-            criteria += '\t- The CWE associated with this vulnerability is in the top 5 (2024) most dangerous CWE\n'
+            criteria += '\t- Critical Category\n'
+        """elif score_category == "HIGH":
+            to_highlight = True
+            criteria += '\t- High Category\n'"""
+
+        #Vector String Criteria
+        if vectorstring != '':
+            vector_dict = {str(i.split(':')[0]): str(i.split(':')[1]) for i in vectorstring.split("/")}
+            vector_dict['CVSS'] = '2' if 'CVSS' not in vector_dict else vector_dict['CVSS']
+            #criteria+=f'\n{vector_dict}\n'
+
+            if vector_dict['CVSS'] == '2':
+                if 'AV' in vector_dict and vector_dict['AV'] == 'N':
+                    to_highlight = True
+                    criteria += '\t- Remotely exploitable\n'
+                if 'AC' in vector_dict and vector_dict['AC'] == 'L':
+                    to_highlight = True
+                    criteria += '\t- Low complexity access\n'
+                if 'Au' in vector_dict and vector_dict['Au'] == 'N':
+                    to_highlight = True
+                    criteria += '\t- No authentication required to exploit the vulnerability\n'
+                if 'C' in vector_dict and vector_dict['C'] == 'C':
+                    to_highlight = True
+                    criteria += '\t- Complete impact on data confidentiality\n'
+                if 'I' in vector_dict and vector_dict['I'] == 'C':
+                    to_highlight = True
+                    criteria += '\t- Complete impact on system integrity\n'
+                if 'A' in vector_dict and vector_dict['A'] == 'C':
+                    to_highlight = True
+                    criteria += '\t- Complete impact on system availability\n'
+            elif vector_dict['CVSS'] == '3.0' or vector_dict['CVSS'] == '3.1':
+                if 'AV' in vector_dict and vector_dict['AV'] == 'N':
+                    to_highlight = True
+                    criteria += '\t- Remotely exploitable\n'
+                if 'AC' in vector_dict and vector_dict['AC'] == 'L':
+                    to_highlight = True
+                    criteria += '\t- Low complexity access\n'
+                if 'PR' in vector_dict and vector_dict['PR'] == 'N':
+                    to_highlight = True
+                    criteria += '\t- Attacker does not required any privileges to attack the system\n'
+                if 'UI' in vector_dict and vector_dict['UI'] == 'N':
+                    to_highlight = True
+                    criteria += '\t- The vulnerability can be exploited without interaction from any user\n'
+                if 'S' in vector_dict and vector_dict['S'] == 'C':
+                    to_highlight = True
+                    criteria += '\t- The vulnerability can affect other components\n'
+                if 'C' in vector_dict and vector_dict['C'] == 'H':
+                    to_highlight = True
+                    criteria += '\t- Complete impact on data confidentiality\n'
+                if 'I' in vector_dict and vector_dict['I'] == 'H':
+                    to_highlight = True
+                    criteria += '\t- Complete impact on system integrity\n'
+                if 'A' in vector_dict and vector_dict['A'] == 'H':
+                    to_highlight = True
+                    criteria += '\t- Complete impact on system availability\n'
+            elif vector_dict['CVSS'] == '4.0':
+                if 'AV' in vector_dict and vector_dict['AV'] == 'N':
+                    to_highlight = True
+                    criteria += '\t- Remotely exploitable\n'
+                if 'AC' in vector_dict and vector_dict['AC'] == 'L':
+                    to_highlight = True
+                    criteria += '\t- Low complexity access\n'
+                if 'AT' in vector_dict and vector_dict['AT'] == 'N':#
+                    to_highlight = True
+                    criteria += '\t- Does not depend on specific conditions\n'
+                if 'PR' in vector_dict and vector_dict['PR'] == 'N':
+                    to_highlight = True
+                    criteria += '\t- Attacker does not required any privileges to attack the system\n'
+                if 'UI' in vector_dict and vector_dict['UI'] == 'N':
+                    to_highlight = True
+                    criteria += '\t- The vulnerability can be exploited without interaction from any user\n'
+                if ('VC' in vector_dict and vector_dict['VC'] == 'H') or ('SC' in vector_dict and vector_dict['SC'] == 'H'):
+                    to_highlight = True
+                    criteria += '\t- Complete impact on data confidentiality\n'
+                if ('VI' in vector_dict and vector_dict['VI'] == 'H') or ('SI' in vector_dict and vector_dict['SI'] == 'H'):
+                    to_highlight = True
+                    criteria += '\t- Complete impact on system integrity\n'
+                if ('VA' in vector_dict and vector_dict['VA'] == 'H') or ('SA' in vector_dict and vector_dict['SA'] == 'H'):
+                    to_highlight = True
+                    criteria += '\t- Complete impact on system availability\n'
+            
+            #CWE Criteria
+            #Following https://cwe.mitre.org/top25/ (2024), we choose the top 5 dangerous CWE
+            if cwe in ['CWE-79', 'CWE-787', 'CWE-89', 'CWE-352', 'CWE-22']:
+                to_highlight = True
+                criteria += '\t- The CWE associated with this vulnerability is in the top 5 (2024) most dangerous CWE\n'
+    else:
+        to_highlight = True
+        criteria += "\t- We can't confirm it affects you — please be cautious just in case\n"
 
     return to_highlight, criteria
 
@@ -271,7 +312,7 @@ def component_analysis(component):
     analysis += f"- Version: {component['version']}\n"
 
     vuls = cpe_search(component['cpe'])
-    nres = vuls['resultsPerPage']
+    nres = 0 if vuls is None or 'resultsPerPage' not in vuls else vuls['resultsPerPage']
 
     if vuls is None:
         analysis += "Error communicating with the API\n"
@@ -280,9 +321,10 @@ def component_analysis(component):
     else:
         analysis += f"- Number of vulnerabilities: {nres}\n"
         vuls = vuls['vulnerabilities']
+        componentConfirmed = component['dataConfirmed']
         N_VULNERABILITIES += len(vuls)
         for v in vuls:
-            analysis += f"\n{vulnerability_report(v)}\n"
+            analysis += f"\n{vulnerability_report(v, componentConfirmed)}\n"
     return analysis
 
 def system_report(components):
@@ -352,9 +394,10 @@ if __name__ == "__main__":
 
     #TODO COMENTAR
     #components = []
-    components.append({'name': 'MINA_SSHD', 'version': '-', 'publisher':'Apache','cpe':'cpe:2.3:a:apache:mina_sshd:-:*:*:*:*:*:*:*'})
-    components.append({'name': 'OPENSSH', 'version': '1.5', 'publisher': 'OPENBSD','cpe': 'cpe:2.3:a:openbsd:openssh:1.5:*:*:*:*:*:*:*'})
-    components.append({'name': 'DREAMER_CMS', 'version': '-', 'publisher': 'iteachyou', 'cpe': 'cpe:2.3:a:iteachyou:dreamer_cms:-:*:*:*:*:*:*:*'})
+    components.append({'name': 'MINA_SSHD', 'version': '-', 'publisher':'Apache','cpe':'cpe:2.3:a:apache:mina_sshd:-:*:*:*:*:*:*:*','dataConfirmed': True})
+    components.append({'name': 'OPENSSH', 'version': '1.5', 'publisher': 'OPENBSD','cpe': 'cpe:2.3:a:openbsd:openssh:1.5:*:*:*:*:*:*:*', 'dataConfirmed': True})
+    components.append({'name': 'DREAMER_CMS', 'version': '-', 'publisher': 'iteachyou', 'cpe': 'cpe:2.3:a:iteachyou:dreamer_cms:-:*:*:*:*:*:*:*', 'dataConfirmed': False})
+    components.append({'name': 'pruebafalse', 'version': '-', 'publisher': 'pruebafalse', 'cpe': cpe_constructor('pruebafalse', '-', 'pruebafalse'),'dataConfirmed': False})
     system_report(components)
 
     if HIGHLIGHT_REPORT != '':
@@ -369,5 +412,6 @@ if __name__ == "__main__":
     summary = f"""\nSUMMARY:
     - Analyzed components: {N_COMPONENTS}
     - Detected vulnerabilities: {N_VULNERABILITIES}
-    - Number of significant detected vulnerabilities: {N_VULNERABILITIES_HIGHLIGHTED}"""
+    - Number of significant detected vulnerabilities: {N_VULNERABILITIES_HIGHLIGHTED}
+    - Numbre of vulnerabilities that could not be confirmed but may be present in the system: {N_NON_CONFIRMED_VULNERABILITIES}"""
     print(summary)
