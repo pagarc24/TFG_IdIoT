@@ -2,7 +2,7 @@ import requests
 import subprocess
 import datetime
 import distro
-
+import sys
 import os
 import zipfile
 import io
@@ -337,10 +337,22 @@ def system_report(components):
         print(msg)
         f.write(f"{msg}\n")
     else:
-        for e in components:
+        for i in range(N_COMPONENTS):
+            e = components[i]
             analysis = f"{component_analysis(e)}\n"
             f.write(analysis)
+            loading_bar(i+1, N_COMPONENTS, 'Analyzing components', 'Completed')
     f.close()
+
+def loading_bar(it, total, pre, suf):
+    percent = 100*(it/float(total))
+    filled_length = int(40 * it // total)
+    fill = '#'
+    bar = fill * filled_length + '-' * (40 - filled_length)
+    sys.stdout.write(f'\r{pre} |{bar}| {percent:.1f}% {suf}')
+    sys.stdout.flush()
+    if it == total:
+        print()
 
 def init_cwe_dict():
     global CWE_DICT
@@ -388,6 +400,7 @@ def init():
     NVD_API_KEY = get_token()
 
 if __name__ == "__main__":
+    duration = datetime.datetime.now()
     init()
 
     components = collector()
@@ -408,10 +421,16 @@ if __name__ == "__main__":
         h_msg += "=========================\n"
         print(h_msg)
     
+    duration=datetime.datetime.now()-duration
+    total_segundos = duration.total_seconds()
+    min, sec = divmod(total_segundos, 60)
+    min = f"{int(min)}"
+    sec = f"{sec:05.2f}"
     print(f"Analysis completed, you can check the results in the file {REPORT_FILENAME}")
     summary = f"""\nSUMMARY:
     - Analyzed components: {N_COMPONENTS}
     - Detected vulnerabilities: {N_VULNERABILITIES}
     - Number of significant detected vulnerabilities: {N_VULNERABILITIES_HIGHLIGHTED}
-    - Numbre of vulnerabilities that could not be confirmed but may be present in the system: {N_NON_CONFIRMED_VULNERABILITIES}"""
+    - Number of vulnerabilities that could not be confirmed but may be present in the system: {N_NON_CONFIRMED_VULNERABILITIES}
+    - Execution time: {min}:{sec}"""
     print(summary)
