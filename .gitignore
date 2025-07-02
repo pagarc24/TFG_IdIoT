@@ -1,3 +1,6 @@
-api_keys/nvd_api_key
+scripts/api_keys/nvd_api_key
 __pycache__
-scripts/system_analysis
+scripts/system_analysis.txt
+scripts/cwe_data
+#Descomentar cuando haya al menos una versión Beta
+scripts/setup.sh

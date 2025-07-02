@@ -112,7 +112,7 @@ def collector():# Se encarga de recoger nombre, version y fabricante/publisher/v
     components.extend(snap_components)
     msg += f"- Number of snap-type packages: {len(snap_components)}\n"
 
-    dpkg_components = dpkg_list()
+    dpkg_components = []#dpkg_list()
     components.extend(dpkg_components)
     msg += f"- Number of dpkg-type packages: {len(dpkg_components)}\n"
 
@@ -125,10 +125,13 @@ def collector():# Se encarga de recoger nombre, version y fabricante/publisher/v
     return components
 
 def get_token():
-    api_key_file = "../api_keys/nvd_api_key"
-    with open(api_key_file, 'r', encoding='utf-8') as file:
-        token = file.read()
-    return token 
+    api_key_file = "./api_keys/nvd_api_key"
+    try:
+        with open(api_key_file, 'r', encoding='utf-8') as file:
+            token = file.read()
+        return token
+    except Exception as e:
+        return 'ENTER_API'
 
 def parse_description(data, lang='en'):
     desc = ''
@@ -213,15 +216,16 @@ def must_be_highlighted(score_category, vectorstring, cwe, vulnerabiltyConfirmed
         if score_category == "CRITICAL":
             to_highlight = True
             criteria += '\t- Critical Category\n'
-        """elif score_category == "HIGH":
+        """
+        elif score_category == "HIGH":
             to_highlight = True
-            criteria += '\t- High Category\n'"""
+            criteria += '\t- High Category\n'
+        """
 
         #Vector String Criteria
         if vectorstring != '':
             vector_dict = {str(i.split(':')[0]): str(i.split(':')[1]) for i in vectorstring.split("/")}
             vector_dict['CVSS'] = '2' if 'CVSS' not in vector_dict else vector_dict['CVSS']
-            #criteria+=f'\n{vector_dict}\n'
 
             if vector_dict['CVSS'] == '2':
                 if 'AV' in vector_dict and vector_dict['AV'] == 'N':
