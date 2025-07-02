@@ -131,7 +131,7 @@ def get_token():
             token = file.read()
         return token
     except Exception as e:
-        return 'ENTER_API'
+        return NVD_API_KEY
 
 def parse_description(data, lang='en'):
     desc = ''
@@ -428,13 +428,13 @@ if __name__ == "__main__":
     duration=datetime.datetime.now()-duration
     total_segundos = duration.total_seconds()
     min, sec = divmod(total_segundos, 60)
-    min = f"{int(min)}"
-    sec = f"{sec:05.2f}"
+    min = int(min)
+    sec = f"{sec:.3f}"
     print(f"Analysis completed, you can check the results in the file {REPORT_FILENAME}")
     summary = f"""\nSUMMARY:
     - Analyzed components: {N_COMPONENTS}
     - Detected vulnerabilities: {N_VULNERABILITIES}
     - Number of significant detected vulnerabilities: {N_VULNERABILITIES_HIGHLIGHTED}
     - Number of vulnerabilities that could not be confirmed but may be present in the system: {N_NON_CONFIRMED_VULNERABILITIES}
-    - Execution time: {min}:{sec}"""
+    - Execution time: {min} minutes and {sec} seconds"""
     print(summary)
