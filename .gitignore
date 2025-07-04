@@ -2,3 +2,4 @@ scripts/api_keys/nvd_api_key
 __pycache__
 scripts/system_analysis.txt
 scripts/cwe_data
+scripts/system_analyzer.sh
