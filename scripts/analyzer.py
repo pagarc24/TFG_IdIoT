@@ -429,7 +429,7 @@ if __name__ == "__main__":
     total_segundos = duration.total_seconds()
     min, sec = divmod(total_segundos, 60)
     min = int(min)
-    sec = f"{sec:.3f}"
+    sec = f"{sec:2.3f}"
     print(f"Analysis completed, you can check the results in the file {REPORT_FILENAME}")
     summary = f"""\nSUMMARY:
     - Analyzed components: {N_COMPONENTS}

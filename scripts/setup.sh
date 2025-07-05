@@ -38,4 +38,4 @@ fi
 
 echo "$PYTHON_PATH $(pwd)/$ANALYZER_SOURCE_CODE" > $ANALYZER_EXECUTABLE
 chmod +x $ANALYZER_EXECUTABLE
-echo "Analyzer installed sucesfully. You can run the script using the command ' sudo ./$ANALYZER_EXECUTABLE'"
+echo "Analyzer installed sucesfully. You can run the script using the command 'sudo ./$ANALYZER_EXECUTABLE'"
