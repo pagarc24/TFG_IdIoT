@@ -207,7 +207,7 @@ def vulnerability_report(vulnerability, vulnerabiltyConfirmed):
 def cwe_transform(data):
     return f"{data}: {CWE_DICT[data]}" if data in CWE_DICT else data
 
-def must_be_highlighted(score_category, vectorstring, cwe, vulnerabiltyConfirmed):#TODO - Revisar criterios, hay demasiado, especialmente en el vector string
+def must_be_highlighted(score_category, vectorstring, cwe, vulnerabiltyConfirmed):
     to_highlight = False
     criteria = ''
 
@@ -216,92 +216,23 @@ def must_be_highlighted(score_category, vectorstring, cwe, vulnerabiltyConfirmed
         if score_category == "CRITICAL":
             to_highlight = True
             criteria += '\t- Critical Category\n'
-        """
-        elif score_category == "HIGH":
-            to_highlight = True
-            criteria += '\t- High Category\n'
-        """
 
         #Vector String Criteria
         if vectorstring != '':
             vector_dict = {str(i.split(':')[0]): str(i.split(':')[1]) for i in vectorstring.split("/")}
-            vector_dict['CVSS'] = '2' if 'CVSS' not in vector_dict else vector_dict['CVSS']
 
-            if vector_dict['CVSS'] == '2':
-                if 'AV' in vector_dict and vector_dict['AV'] == 'N':
-                    to_highlight = True
-                    criteria += '\t- Remotely exploitable\n'
-                if 'AC' in vector_dict and vector_dict['AC'] == 'L':
-                    to_highlight = True
-                    criteria += '\t- Low complexity access\n'
-                if 'Au' in vector_dict and vector_dict['Au'] == 'N':
-                    to_highlight = True
-                    criteria += '\t- No authentication required to exploit the vulnerability\n'
-                if 'C' in vector_dict and vector_dict['C'] == 'C':
-                    to_highlight = True
-                    criteria += '\t- Complete impact on data confidentiality\n'
-                if 'I' in vector_dict and vector_dict['I'] == 'C':
-                    to_highlight = True
-                    criteria += '\t- Complete impact on system integrity\n'
-                if 'A' in vector_dict and vector_dict['A'] == 'C':
-                    to_highlight = True
-                    criteria += '\t- Complete impact on system availability\n'
-            elif vector_dict['CVSS'] == '3.0' or vector_dict['CVSS'] == '3.1':
-                if 'AV' in vector_dict and vector_dict['AV'] == 'N':
-                    to_highlight = True
-                    criteria += '\t- Remotely exploitable\n'
-                if 'AC' in vector_dict and vector_dict['AC'] == 'L':
-                    to_highlight = True
-                    criteria += '\t- Low complexity access\n'
-                if 'PR' in vector_dict and vector_dict['PR'] == 'N':
-                    to_highlight = True
-                    criteria += '\t- Attacker does not required any privileges to attack the system\n'
-                if 'UI' in vector_dict and vector_dict['UI'] == 'N':
-                    to_highlight = True
-                    criteria += '\t- The vulnerability can be exploited without interaction from any user\n'
-                if 'S' in vector_dict and vector_dict['S'] == 'C':
-                    to_highlight = True
-                    criteria += '\t- The vulnerability can affect other components\n'
-                if 'C' in vector_dict and vector_dict['C'] == 'H':
-                    to_highlight = True
-                    criteria += '\t- Complete impact on data confidentiality\n'
-                if 'I' in vector_dict and vector_dict['I'] == 'H':
-                    to_highlight = True
-                    criteria += '\t- Complete impact on system integrity\n'
-                if 'A' in vector_dict and vector_dict['A'] == 'H':
-                    to_highlight = True
-                    criteria += '\t- Complete impact on system availability\n'
-            elif vector_dict['CVSS'] == '4.0':
-                if 'AV' in vector_dict and vector_dict['AV'] == 'N':
-                    to_highlight = True
-                    criteria += '\t- Remotely exploitable\n'
-                if 'AC' in vector_dict and vector_dict['AC'] == 'L':
-                    to_highlight = True
-                    criteria += '\t- Low complexity access\n'
-                if 'AT' in vector_dict and vector_dict['AT'] == 'N':#
-                    to_highlight = True
-                    criteria += '\t- Does not depend on specific conditions\n'
-                if 'PR' in vector_dict and vector_dict['PR'] == 'N':
-                    to_highlight = True
-                    criteria += '\t- Attacker does not required any privileges to attack the system\n'
-                if 'UI' in vector_dict and vector_dict['UI'] == 'N':
-                    to_highlight = True
-                    criteria += '\t- The vulnerability can be exploited without interaction from any user\n'
-                if ('VC' in vector_dict and vector_dict['VC'] == 'H') or ('SC' in vector_dict and vector_dict['SC'] == 'H'):
-                    to_highlight = True
-                    criteria += '\t- Complete impact on data confidentiality\n'
-                if ('VI' in vector_dict and vector_dict['VI'] == 'H') or ('SI' in vector_dict and vector_dict['SI'] == 'H'):
-                    to_highlight = True
-                    criteria += '\t- Complete impact on system integrity\n'
-                if ('VA' in vector_dict and vector_dict['VA'] == 'H') or ('SA' in vector_dict and vector_dict['SA'] == 'H'):
-                    to_highlight = True
-                    criteria += '\t- Complete impact on system availability\n'
-            
-            #CWE Criteria
-            #Following https://cwe.mitre.org/top25/ (2024), we choose the top 5 dangerous CWE
-            if cwe in ['CWE-79', 'CWE-787', 'CWE-89', 'CWE-352', 'CWE-22']:
+            if 'AV' in vector_dict and vector_dict['AV'] == 'N':
                 to_highlight = True
-                criteria += '\t- The CWE associated with this vulnerability is in the top 5 (2024) most dangerous CWE\n'
+                criteria += '\t- Remotely exploitable\n'
+            if 'AC' in vector_dict and vector_dict['AC'] == 'L':
+                to_highlight = True
+                criteria += '\t- Low complexity access\n'
+            
+        #CWE Criteria
+        #Following https://cwe.mitre.org/top25/ (2024), we choose the top 5 dangerous CWE
+        if cwe in ['CWE-79', 'CWE-787', 'CWE-89', 'CWE-352', 'CWE-22']:
+            to_highlight = True
+            criteria += '\t- The CWE associated with this vulnerability is in the top 5 (2024) most dangerous CWE\n'
     else:
         to_highlight = True
         criteria += "\t- We can't confirm it affects you — please be cautious just in case\n"

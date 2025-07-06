@@ -1,6 +1,6 @@
 # SYSTEM ANALYZER  
   
-## EN  
+## EN :uk:  
 ### Purpose    
 The purpose of this document is to explain the installation of the analyzer dependencies in order to identify possible vulnerabilities in your system.  
 
@@ -19,8 +19,11 @@ If the resources are installed correctly, a message like this one will appear:
 Analyzer installed sucesfully. You can run the script using the command 'sudo ./system_analyzer.sh'  
 ```  
 In this case you can now use the analyzer as indicated in the message (remember to run it as superuser). ~~Enjoy~~ securize it!  
-
-## ES  
+  
+### Improvements  
+If you have an NVD API key you can include it to improve the NVD response times, from where the vulnerability information is obtained. For them you will have to include it inside the file ‘./api_keys/nvd_api_key’.  
+  
+## ES :es:  
 ### Objetivo  
 El objetivo de este documento es explicar la instalación de las dependencias del analizador para poder identificar posibles vulnerabilidades en tu sistema.  
 
@@ -39,3 +42,6 @@ En caso de que se instalen los recursos correctamente saldrá un mensaje como es
 Analyzer installed sucesfully. You can run the script using the command 'sudo ./system_analyzer.sh'  
 ```  
 En tal caso ya puedes hacer uso del analizador como se indica en el mensaje (recuerda ejecutarlo como superusuario). ¡A ~~disfrutar~~ securizar se ha dicho!  
+  
+### Mejoras  
+Si dispones de una clave API de NVD puedes incluirla para mejorar los tiempos de respuesta de NVD, de donde se saca la información de las vulnerabilidades. Para ellos deberás incluirla dentro del fichero './api_keys/nvd_api_key'.   
