@@ -24,6 +24,34 @@ N_NON_CONFIRMED_VULNERABILITIES = 0
 
 CWE_DICT = {}
 
+def apt_list():
+    try:
+        paquetes_apt = []
+        process = subprocess.run(['apt', 'list', '--installed'], capture_output=True, text=True)
+        out = process.stdout.strip().split('\n')[1:]
+
+        for paquete in out:
+            if '/' not in paquete:
+                continue
+
+            carac = paquete.split(maxsplit=1)
+            if len(carac) >= 2:
+                name = carac[0].split('/')[0]
+                version = carac[1].split()[0]
+                publisher = "*" # info not available from apt list
+                cpe = cpe_constructor(name, version, publisher)
+
+                paquetes_apt.append({
+                    'name': name,
+                    'version': version,
+                    'publisher': publisher,
+                    'cpe': cpe,
+                    'dataConfirmed': False
+                })
+        return paquetes_apt
+    except:
+        return []
+
 def dpkg_list():
     try:
         paquetes_dpkg = []
@@ -115,6 +143,10 @@ def collector():# Se encarga de recoger nombre, version y fabricante/publisher/v
     dpkg_components = []#dpkg_list()
     components.extend(dpkg_components)
     msg += f"- Number of dpkg-type packages: {len(dpkg_components)}\n"
+
+    apt_components = apt_list()
+    components.extend(apt_components)
+    msg += f"- Number of apt-type packages: {len(apt_components)}\n"
 
     msg += '========================\n'
     f = open(REPORT_FILENAME, "a")
@@ -340,12 +372,15 @@ if __name__ == "__main__":
 
     components = collector()
 
+    """
     #TODO COMENTAR
     #components = []
     components.append({'name': 'MINA_SSHD', 'version': '-', 'publisher':'Apache','cpe':'cpe:2.3:a:apache:mina_sshd:-:*:*:*:*:*:*:*','dataConfirmed': True})
     components.append({'name': 'OPENSSH', 'version': '1.5', 'publisher': 'OPENBSD','cpe': 'cpe:2.3:a:openbsd:openssh:1.5:*:*:*:*:*:*:*', 'dataConfirmed': True})
     components.append({'name': 'DREAMER_CMS', 'version': '-', 'publisher': 'iteachyou', 'cpe': 'cpe:2.3:a:iteachyou:dreamer_cms:-:*:*:*:*:*:*:*', 'dataConfirmed': False})
     components.append({'name': 'pruebafalse', 'version': '-', 'publisher': 'pruebafalse', 'cpe': cpe_constructor('pruebafalse', '-', 'pruebafalse'),'dataConfirmed': False})
+    """
+
     system_report(components)
 
     if HIGHLIGHT_REPORT != '':

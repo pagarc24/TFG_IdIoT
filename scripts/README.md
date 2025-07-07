@@ -6,7 +6,7 @@ The purpose of this document is to explain the installation of the analyzer depe
 
 ### How to install the tool?  
 First you need to have Python3 installed on your system. It can be downloaded from the [Python web site](https://www.python.org/downloads/).  
-With Python3 installed, you can proceed to set the necessary dependencies to use the analyzer by means of [setup.sh](setup.sh).You must first give yourself permissions to execute:  
+With Python3 installed, you can proceed to set the necessary dependencies to use the analyzer by means of [setup.sh](setup.sh). You must first give yourself permissions to execute:  
 ```  
 chmod +x setup.sh  
 ```  
