@@ -52,7 +52,34 @@ def pacman_list():
         return []
 
 def rpm_list():
-    return []
+    try:
+        paquetes_rpm = []
+
+        process = subprocess.run(['rpm', '-qa'], capture_output=True, text=True, check=True, stderr=subprocess.DEVNULL)
+        out = process.stdout.strip().split('\n')
+
+        #out = ["bash-5.1.8-4.fc34.x86_64", "bash-5.1.8-4.fc34.x86_64"]
+
+        for paquete in out:
+            #bash-5.1.8-4.fc34.x86_64
+            parts = paquete.split('-', 1)
+            if len(parts) == 2:
+                name = parts[0]
+                version_release_arch = parts[1]
+                version = version_release_arch.split('-', 1)[0]
+                publisher = "*"
+                cpe = cpe_constructor(name, version, publisher)
+                paquetes_rpm.append({
+                    'name': name,
+                    'version': version,
+                    'publisher': publisher,
+                    'cpe': cpe,
+                    'dataConfirmed': False
+                })
+        return paquetes_rpm
+    except Exception as e:
+        print(f"Error in rpm_list: {e}")
+        return []
 
 def apt_list():
     try:
@@ -162,7 +189,7 @@ def collector():# Se encarga de recoger nombre, version y fabricante/publisher/v
     msg = '========PACKAGES========\n'
 
     components=[]
-
+    """
     snap_components = snap_list()
     components.extend(snap_components)
     msg += f"- Number of snap-type packages: {len(snap_components)}\n"
@@ -178,7 +205,7 @@ def collector():# Se encarga de recoger nombre, version y fabricante/publisher/v
     pacman_components = pacman_list()
     components.extend(pacman_components)
     msg += f"- Number of pacman-type packages: {len(pacman_components)}\n"
-
+    """
     rpm_components = rpm_list()
     components.extend(rpm_components)
     msg += f"- Number of rpm-type packages: {len(rpm_components)}\n"
