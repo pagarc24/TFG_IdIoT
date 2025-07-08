@@ -24,6 +24,36 @@ N_NON_CONFIRMED_VULNERABILITIES = 0
 
 CWE_DICT = {}
 
+def pacman_list():
+    try:
+        paquetes_pacman = []
+        process = subprocess.run(['pacman', '-Q'], capture_output=True, text=True, stderr=subprocess.DEVNULL)
+        out = process.stdout.strip().split('\n')
+        for paquete in out:
+            if not paquete:
+                continue
+
+            carac = paquete.split(maxsplit=1)
+            if len(carac) >= 2:
+                name = carac[0]
+                version = carac[1]
+                publisher = "*" 
+                cpe = cpe_constructor(name, version, publisher)
+
+                paquetes_pacman.append({
+                    'name': name,
+                    'version': version,
+                    'publisher': publisher,
+                    'cpe': cpe,
+                    'dataConfirmed': False
+                })
+        return paquetes_pacman
+    except:
+        return []
+
+def rpm_list():
+    return []
+
 def apt_list():
     try:
         paquetes_apt = []
@@ -128,9 +158,6 @@ def cpe_search(cpe):
     return response.json() if 200<=response.status_code<300 else None
 
 def collector():# Se encarga de recoger nombre, version y fabricante/publisher/vendor de distintos gestores
-    """ TODO Crear otros recolectores de paquetes, dpkg por ejemplo. Si no es posible obtener el publisher 
-    o la versión se marca el comodín y se le añade al componente un elemento que indica que no tiene 
-    porque ser al cien por cien el que está en el sistema"""
 
     msg = '========PACKAGES========\n'
 
@@ -140,13 +167,21 @@ def collector():# Se encarga de recoger nombre, version y fabricante/publisher/v
     components.extend(snap_components)
     msg += f"- Number of snap-type packages: {len(snap_components)}\n"
 
-    dpkg_components = []#dpkg_list()
+    dpkg_components = []
     components.extend(dpkg_components)
     msg += f"- Number of dpkg-type packages: {len(dpkg_components)}\n"
 
     apt_components = apt_list()
     components.extend(apt_components)
     msg += f"- Number of apt-type packages: {len(apt_components)}\n"
+
+    pacman_components = pacman_list()
+    components.extend(pacman_components)
+    msg += f"- Number of pacman-type packages: {len(pacman_components)}\n"
+
+    rpm_components = rpm_list()
+    components.extend(rpm_components)
+    msg += f"- Number of rpm-type packages: {len(rpm_components)}\n"
 
     msg += '========================\n'
     f = open(REPORT_FILENAME, "a")
