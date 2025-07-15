@@ -20,14 +20,13 @@ HIGHLIGHT_REPORT = ''
 N_COMPONENTS = 0
 N_VULNERABILITIES = 0
 N_VULNERABILITIES_HIGHLIGHTED = 0
-N_NON_CONFIRMED_VULNERABILITIES = 0
 
 CWE_DICT = {}
 
 def pacman_list():
     try:
         paquetes_pacman = []
-        process = subprocess.run(['pacman', '-Q'], capture_output=True, text=True, stderr=subprocess.DEVNULL)
+        process = subprocess.run(['pacman', '-Q'], stdout=subprocess.PIPE, text=True, stderr=subprocess.DEVNULL)
         out = process.stdout.strip().split('\n')
         for paquete in out:
             if not paquete:
@@ -44,8 +43,7 @@ def pacman_list():
                     'name': name,
                     'version': version,
                     'publisher': publisher,
-                    'cpe': cpe,
-                    'dataConfirmed': False
+                    'cpe': cpe
                 })
         return paquetes_pacman
     except:
@@ -73,8 +71,7 @@ def rpm_list():
                     'name': name,
                     'version': version,
                     'publisher': publisher,
-                    'cpe': cpe,
-                    'dataConfirmed': False
+                    'cpe': cpe
                 })
         return paquetes_rpm
     except Exception as e:
@@ -102,8 +99,7 @@ def apt_list():
                     'name': name,
                     'version': version,
                     'publisher': publisher,
-                    'cpe': cpe,
-                    'dataConfirmed': False
+                    'cpe': cpe
                 })
         return paquetes_apt
     except:
@@ -130,8 +126,7 @@ def dpkg_list():
                     'name': name,
                     'version': version,
                     'publisher': publisher,
-                    'cpe': cpe,
-                    'dataConfirmed': False
+                    'cpe': cpe
                 })
         return paquetes_dpkg
     except:
@@ -154,8 +149,7 @@ def snap_list():
                     'name': name,
                     'version': version,
                     'publisher': publisher,
-                    'cpe': cpe,
-                    'dataConfirmed': True
+                    'cpe': cpe
                 })
         return paquetes_snap
     except:
@@ -259,10 +253,9 @@ def parse_metrics(data):
     score_category = data['baseSeverity'] if 'baseSeverity' in data else 'N/A'
     return score, version, vector, score_category
 
-def vulnerability_report(vulnerability, vulnerabiltyConfirmed):
+def vulnerability_report(vulnerability):
     global HIGHLIGHT_REPORT
     global N_VULNERABILITIES_HIGHLIGHTED
-    global N_NON_CONFIRMED_VULNERABILITIES
 
     report = ''
 
@@ -286,14 +279,11 @@ def vulnerability_report(vulnerability, vulnerabiltyConfirmed):
 
     report += f"\n{parse_description(data['descriptions'])}\n"
 
-    to_highlight, criteria = must_be_highlighted(score_category, vectorstring, cwe, vulnerabiltyConfirmed)
+    to_highlight, criteria = must_be_highlighted(score_category, vectorstring, cwe)
     if to_highlight:
         report += f"******HIGHLIGHT CRITERIA******\n{criteria}\n"
         HIGHLIGHT_REPORT += report
-        if vulnerabiltyConfirmed:
-            N_VULNERABILITIES_HIGHLIGHTED += 1
-        else:
-            N_NON_CONFIRMED_VULNERABILITIES += 1
+        N_VULNERABILITIES_HIGHLIGHTED += 1
         report = "********ATTENTION********\n"+report+"*************************\n"
 
     return report
@@ -301,35 +291,31 @@ def vulnerability_report(vulnerability, vulnerabiltyConfirmed):
 def cwe_transform(data):
     return f"{data}: {CWE_DICT[data]}" if data in CWE_DICT else data
 
-def must_be_highlighted(score_category, vectorstring, cwe, vulnerabiltyConfirmed):
+def must_be_highlighted(score_category, vectorstring, cwe):
     to_highlight = False
     criteria = ''
 
-    if vulnerabiltyConfirmed:
-        #Score Category Criteria
-        if score_category == "CRITICAL":
-            to_highlight = True
-            criteria += '\t- Critical Category\n'
-
-        #Vector String Criteria
-        if vectorstring != '':
-            vector_dict = {str(i.split(':')[0]): str(i.split(':')[1]) for i in vectorstring.split("/")}
-
-            if 'AV' in vector_dict and vector_dict['AV'] == 'N':
-                to_highlight = True
-                criteria += '\t- Remotely exploitable\n'
-            if 'AC' in vector_dict and vector_dict['AC'] == 'L':
-                to_highlight = True
-                criteria += '\t- Low complexity access\n'
-            
-        #CWE Criteria
-        #Following https://cwe.mitre.org/top25/ (2024), we choose the top 5 dangerous CWE
-        if cwe in ['CWE-79', 'CWE-787', 'CWE-89', 'CWE-352', 'CWE-22']:
-            to_highlight = True
-            criteria += '\t- The CWE associated with this vulnerability is in the top 5 (2024) most dangerous CWE\n'
-    else:
+    #Score Category Criteria
+    if score_category == "CRITICAL":
         to_highlight = True
-        criteria += "\t- We can't confirm it affects you — please be cautious just in case\n"
+        criteria += '\t- Critical Category\n'
+
+    #Vector String Criteria
+    if vectorstring != '':
+        vector_dict = {str(i.split(':')[0]): str(i.split(':')[1]) for i in vectorstring.split("/")}
+
+        if 'AV' in vector_dict and vector_dict['AV'] == 'N':
+            to_highlight = True
+            criteria += '\t- Remotely exploitable\n'
+        if 'AC' in vector_dict and vector_dict['AC'] == 'L':
+            to_highlight = True
+            criteria += '\t- Low complexity access\n'
+        
+    #CWE Criteria
+    #Following https://cwe.mitre.org/top25/ (2024), we choose the top 5 dangerous CWE
+    if cwe in ['CWE-79', 'CWE-787', 'CWE-89', 'CWE-352', 'CWE-22']:
+        to_highlight = True
+        criteria += '\t- The CWE associated with this vulnerability is in the top 5 (2024) most dangerous CWE\n'
 
     return to_highlight, criteria
 
@@ -350,10 +336,9 @@ def component_analysis(component):
     else:
         analysis += f"- Number of vulnerabilities: {nres}\n"
         vuls = vuls['vulnerabilities']
-        componentConfirmed = component['dataConfirmed']
         N_VULNERABILITIES += len(vuls)
         for v in vuls:
-            analysis += f"\n{vulnerability_report(v, componentConfirmed)}\n"
+            analysis += f"\n{vulnerability_report(v)}\n"
     return analysis
 
 def system_report(components):
@@ -437,10 +422,10 @@ if __name__ == "__main__":
     """
     #TODO COMENTAR
     #components = []
-    components.append({'name': 'MINA_SSHD', 'version': '-', 'publisher':'Apache','cpe':'cpe:2.3:a:apache:mina_sshd:-:*:*:*:*:*:*:*','dataConfirmed': True})
-    components.append({'name': 'OPENSSH', 'version': '1.5', 'publisher': 'OPENBSD','cpe': 'cpe:2.3:a:openbsd:openssh:1.5:*:*:*:*:*:*:*', 'dataConfirmed': True})
-    components.append({'name': 'DREAMER_CMS', 'version': '-', 'publisher': 'iteachyou', 'cpe': 'cpe:2.3:a:iteachyou:dreamer_cms:-:*:*:*:*:*:*:*', 'dataConfirmed': False})
-    components.append({'name': 'pruebafalse', 'version': '-', 'publisher': 'pruebafalse', 'cpe': cpe_constructor('pruebafalse', '-', 'pruebafalse'),'dataConfirmed': False})
+    components.append({'name': 'MINA_SSHD', 'version': '-', 'publisher':'Apache','cpe':'cpe:2.3:a:apache:mina_sshd:-:*:*:*:*:*:*:*'})
+    components.append({'name': 'OPENSSH', 'version': '1.5', 'publisher': 'OPENBSD','cpe': 'cpe:2.3:a:openbsd:openssh:1.5:*:*:*:*:*:*:*'})
+    components.append({'name': 'DREAMER_CMS', 'version': '-', 'publisher': 'iteachyou', 'cpe': 'cpe:2.3:a:iteachyou:dreamer_cms:-:*:*:*:*:*:*:*'})
+    components.append({'name': 'pruebafalse', 'version': '-', 'publisher': 'pruebafalse', 'cpe': cpe_constructor('pruebafalse', '-', 'pruebafalse')})
     """
 
     system_report(components)
@@ -463,6 +448,5 @@ if __name__ == "__main__":
     - Analyzed components: {N_COMPONENTS}
     - Detected vulnerabilities: {N_VULNERABILITIES}
     - Number of significant detected vulnerabilities: {N_VULNERABILITIES_HIGHLIGHTED}
-    - Number of vulnerabilities that could not be confirmed but may be present in the system: {N_NON_CONFIRMED_VULNERABILITIES}
     - Execution time: {min} minutes and {sec} seconds"""
     print(summary)
