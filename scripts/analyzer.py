@@ -49,35 +49,6 @@ def pacman_list():
     except:
         return []
 
-def rpm_list():
-    try:
-        paquetes_rpm = []
-
-        process = subprocess.run(['rpm', '-qa'], capture_output=True, text=True, check=True, stderr=subprocess.DEVNULL)
-        out = process.stdout.strip().split('\n')
-
-        #out = ["bash-5.1.8-4.fc34.x86_64", "bash-5.1.8-4.fc34.x86_64"]
-
-        for paquete in out:
-            #bash-5.1.8-4.fc34.x86_64
-            parts = paquete.split('-', 1)
-            if len(parts) == 2:
-                name = parts[0]
-                version_release_arch = parts[1]
-                version = version_release_arch.split('-', 1)[0]
-                publisher = "*"
-                cpe = cpe_constructor(name, version, publisher)
-                paquetes_rpm.append({
-                    'name': name,
-                    'version': version,
-                    'publisher': publisher,
-                    'cpe': cpe
-                })
-        return paquetes_rpm
-    except Exception as e:
-        print(f"Error in rpm_list: {e}")
-        return []
-
 def apt_list():
     try:
         paquetes_apt = []
@@ -183,7 +154,7 @@ def collector():# Se encarga de recoger nombre, version y fabricante/publisher/v
     msg = '========PACKAGES========\n'
 
     components=[]
-    """
+
     snap_components = snap_list()
     components.extend(snap_components)
     msg += f"- Number of snap-type packages: {len(snap_components)}\n"
@@ -199,10 +170,6 @@ def collector():# Se encarga de recoger nombre, version y fabricante/publisher/v
     pacman_components = pacman_list()
     components.extend(pacman_components)
     msg += f"- Number of pacman-type packages: {len(pacman_components)}\n"
-    """
-    rpm_components = rpm_list()
-    components.extend(rpm_components)
-    msg += f"- Number of rpm-type packages: {len(rpm_components)}\n"
 
     msg += '========================\n'
     f = open(REPORT_FILENAME, "a")
@@ -418,15 +385,6 @@ if __name__ == "__main__":
     init()
 
     components = collector()
-
-    """
-    #TODO COMENTAR
-    #components = []
-    components.append({'name': 'MINA_SSHD', 'version': '-', 'publisher':'Apache','cpe':'cpe:2.3:a:apache:mina_sshd:-:*:*:*:*:*:*:*'})
-    components.append({'name': 'OPENSSH', 'version': '1.5', 'publisher': 'OPENBSD','cpe': 'cpe:2.3:a:openbsd:openssh:1.5:*:*:*:*:*:*:*'})
-    components.append({'name': 'DREAMER_CMS', 'version': '-', 'publisher': 'iteachyou', 'cpe': 'cpe:2.3:a:iteachyou:dreamer_cms:-:*:*:*:*:*:*:*'})
-    components.append({'name': 'pruebafalse', 'version': '-', 'publisher': 'pruebafalse', 'cpe': cpe_constructor('pruebafalse', '-', 'pruebafalse')})
-    """
 
     system_report(components)
 
