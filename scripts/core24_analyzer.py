@@ -3,7 +3,6 @@ import os
 import io
 import sys
 
-
 # Timeout time established, 5 seconds seems to be good
 COMMAND_TIMEOUT_SECONDS = 5
 
@@ -15,22 +14,17 @@ def run_command(command, path_env=None, timeout_seconds=COMMAND_TIMEOUT_SECONDS)
     """
     try:
         env = os.environ.copy()
-        result = subprocess.run(
-            command,
-            capture_output=True,
-            text=True,
-            check=False,
-            shell=True,
-            env=env,
-            timeout=timeout_seconds # Timeout just in case something gets stuck
-        )
+        result = subprocess.run( command, capture_output=True, text=True, check=False,
+            shell=True, env=env, timeout=timeout_seconds)
         return result.stdout.strip(), result.stderr.strip(), result.returncode
-    except FileNotFoundError:
+    except FileNotFoundError: 
+        ## Error code for command not found : 127
         return "", f"Comando '{command.split()[0]}' no encontrado.", 127
     except subprocess.TimeoutExpired:
-        # El comando excedió el tiempo máximo, se termina y se devuelve un error específico
+        ## Error, command timeout
         return "", f"El comando '{command}' excedió el tiempo de espera de {timeout_seconds} segundos.", 1
     except Exception as e:
+        ## Other excpetion handling
         return "", f"Error ejecutando el comando '{command}': {e}", 1
 
 def get_core24_info():
@@ -47,89 +41,65 @@ def get_core24_info():
     return None, None, None
 
 def main():
-    # Redirige stdout a un objeto StringIO para capturar la salida de consola para el archivo TXT
-    original_stdout = sys.stdout
-    string_buffer = io.StringIO()
-    sys.stdout = string_buffer
-
     print(f"--- Information for core24 Snap ---")
 
     core24_version, core24_revision, core24_path = get_core24_info()
-
+    bin_path = os.path.join(core24_path, "usr", "bin")
     if not core24_path:
         print("Error: Could not find core24 snap information. Is Ubuntu Core running?")
-        sys.stdout = original_stdout # Restaurar stdout
-        print(string_buffer.getvalue()) # Print captured error to console
         return
 
+    print("-" * 50)
     print(f"Core24 Snap Version: {core24_version}")
     print(f"Core24 Snap Revision: {core24_revision}")
     print(f"Core24 Snap Path: {core24_path}")
-    print(f"\nNote: All binaries within this path are part of this specific core24 snap version.")
-    print(f"Their individual 'versions' are ultimately tied to this snap's version.")
     print("-" * 50)
 
-    bin_path = os.path.join(core24_path, "usr", "bin")
-    if not os.path.isdir(bin_path):
-        print(f"Error: Directory {bin_path} not found.")
-        sys.stdout = original_stdout # Restore stdout
-        print(string_buffer.getvalue()) # Print captured error to console
-        return
-
+    ## Get a list of the executables that you have access to
     executables = []
     try:
         for filename in os.listdir(bin_path):
             full_path = os.path.join(bin_path, filename)
             if os.path.isfile(full_path) and os.access(full_path, os.X_OK):
                 executables.append(filename)
-        executables.sort() # Para salida consistente
     except Exception as e:
         print(f"Error listing executables in {bin_path}: {e}")
-        sys.stdout = original_stdout # Restore stdout
-        print(string_buffer.getvalue()) # Print captured error to console
         return
 
+    ## Get amount of available executables to make statistics later on
     total_executables = len(executables)
     versions_found_count = 0
     versions_not_found_count = 0
 
     print(f"\n--- Attempting to query versions for {total_executables} executables in {bin_path} ---")
-    print("(Note: Output can be verbose and parsing is heuristic)")
-
-    # ...existing code...
 
     for i, exe in enumerate(executables):
-        # Imprimir progreso en consola (también capturado en el buffer)
-        print(f"[{i+1}/{total_executables}] Processing: {exe}...")
-
         full_exe_path = os.path.join(bin_path, exe)
         version_output = "N/A"
         version_source = "Not Found"
-        error_message = "" # Para guardar errores específicos como timeout
+        error_message = "" # Store customs errors like run_command timeout
 
-        # Probar flags comunes de versión
-        for flag in ["--version", "-V" ,"-v"]:
+        # Try common version flags
+        for flag in ["--version", "-V"]:
             stdout, stderr, returncode = run_command(f"{full_exe_path} {flag}", path_env=bin_path, timeout_seconds=COMMAND_TIMEOUT_SECONDS)
 
-            # Check for timeout specifically or other critical errors
+            ## If one of these 2 errors, break, no point in trying with another flag
             if "timed out" in stderr or "Command not found" in stderr:
                 error_message = stderr
-                break # No point in trying other flags if it timed out or wasn't found
+                break
 
-            output = stdout if stdout else stderr # Sometimes output is on stderr
-
+            ## Some older version send version info to stderr
+            output = stdout if stdout else stderr
+            ## Found a version, move to next executable
             if returncode == 0 and output:
                 version_output = output.strip()
                 version_source = f"'{flag}' flag"
-                break # Found a version, move to next executable
+                break
             elif returncode != 0:
-                # If non-zero, but not a recognized "bad flag" error, capture it.
-                # This could be a permission denied, or other unexpected error.
+                ## This could be a permission denied, or other unexpected error.
                 if "unrecognized option" not in stderr.lower() and "invalid option" not in stderr.lower() and "usage" not in stderr.lower():
                     error_message = stderr
-                # Else, it was probably just a normal "this flag doesn't exist" error, which is fine.
 
-        # Decidir si se encontró la versión o no para el resumen
         if version_output != "N/A" and not version_output.startswith("ERROR:"):
             versions_found_count += 1
         else:
@@ -141,11 +111,7 @@ def main():
             elif not error_message: # If still N/A and no explicit error message
                 version_output = "N/A (No version flag responded)"
 
-
-        # ...existing code...
-
         print(f"Executable: {exe}")
-        # For console/TXT, show only the first line of version or error for brevity
         display_version = version_output.splitlines()[0] if version_output != "N/A" and not version_output.startswith("ERROR:") else version_output
         print(f"  Version: {display_version}")
         print(f"  Source: {version_source}")
@@ -159,13 +125,6 @@ def main():
     percentage_not_found = (versions_not_found_count / total_executables * 100) if total_executables > 0 else 0
     print(f"Percentage of versions not found: {percentage_not_found:.2f}%")
     print("\n--- End of Report ---")
-
-    # Restore original stdout so further prints go to console
-    sys.stdout = original_stdout
-    # Also print the captured output to the console directly
-    captured_output = string_buffer.getvalue()
-    print(captured_output)
-
 
 if __name__ == "__main__":
     main()
