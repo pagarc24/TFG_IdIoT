@@ -7,8 +7,12 @@ import os
 import zipfile
 import io
 import xml.etree.ElementTree as ET
+import re
 
-## Configutation of API requests
+# Timeout time established for commands that wait for response
+COMMAND_TIMEOUT_SECONDS = 0.5
+
+# Configutation of API requests
 NVD_API_BASE_URL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 # API key for NVD API access
 NVD_API_KEY = "ENTER_API"
@@ -125,6 +129,84 @@ def snap_list():
         return paquetes_snap
     except:
         return []
+    
+def get_executables(bin_path):
+    executables = []
+    try:
+        for filename in os.listdir(bin_path):
+            full_path = os.path.join(bin_path, filename)
+            if os.path.isfile(full_path) and os.access(full_path, os.X_OK):
+                executables.append(filename)
+    except Exception as e:
+        print(f"Error listing executables in {bin_path}: {e}")
+        return
+    return executables
+    
+def core24_list():
+    try:
+        executables_list = []
+        executables_core24 = []
+        core24_version, core24_revision, core24_path = get_core24_info()
+        bin_path = os.path.join(core24_path, "usr", "bin")
+        if not core24_path:
+            print("Error: Could not find core24 snap information. Is Ubuntu Core running?")
+            return
+        
+        executables_core24 = get_executables(bin_path)
+
+        versions_found_count = 0
+        versions_not_found_count = 0
+        for exe in executables_core24:
+            full_exe_path = os.path.join(bin_path, exe)
+            version_output = ""
+            error_msg = ""
+
+            for flag in ["--version", "-V"]:
+                stdout, stderr, returncode = run_command([full_exe_path, flag], timeout_seconds=COMMAND_TIMEOUT_SECONDS)
+
+                if "timed out" in stderr or "Command not found" in stderr:
+                    error_msg = stderr
+                    break
+
+                ## as version is diagnostic, sent on stderr
+                output = stdout if stdout else stderr
+                if returncode == 0 and output:
+                    version_output = output.strip()
+                    break
+                elif returncode != 0:
+                    if "unrecognized option" not in stderr.lower() and "invalid option" not in stderr.lower() and "usage" not in stderr.lower():
+                        error_msg = stderr
+
+            if version_output:
+                name, version = parse_version_output(exe, version_output)
+                if version != "N/A":
+                    versions_found_count += 1
+                else:
+                    versions_not_found_count += 1
+            elif error_msg:
+                version_output = f"ERROR: {error_msg}"
+                name, version = parse_version_output(exe, version_output)
+                if version != "N/A":
+                    versions_found_count += 1
+                else:
+                    versions_not_found_count += 1
+            else:
+                name = "N/A"
+                version = "N/A"
+                versions_not_found_count += 1
+                version_output = "N/A (No version flag responded)"
+
+            if name != "N/A" and version != "N/A":
+                cpe = cpe_constructor(name.lower() ,version.lower() , "*")
+                executables_list.append({
+                    'name': name.lower(),
+                    'version': version.lower(),
+                    'publisher': "*",
+                    'cpe': cpe
+                })
+        return executables_list
+    except:
+        return []
 
 def cpe_constructor(name, version, publisher):
     CPE_NAME="cpe:2.3"
@@ -138,6 +220,79 @@ def cpe_constructor(name, version, publisher):
     res = res + ":*:*:*:*:*:*:*"
 
     return res
+
+# ret = stdout, stderr, ret code 
+def run_command(command_list, timeout_seconds=COMMAND_TIMEOUT_SECONDS):
+    try:
+        result = subprocess.run(command_list, capture_output=True, 
+            text=True, check=False, env=os.environ.copy(), timeout=timeout_seconds
+        )
+        return result.stdout.strip(), result.stderr.strip(), result.returncode
+    except FileNotFoundError:
+        return "", f"Command '{command_list[0]}' not found.", 127
+    except subprocess.TimeoutExpired:
+        command_str = " ".join(command_list)
+        return "", f"The command '{command_str}' exceeded the timeout of {timeout_seconds} seconds.", 1
+    except Exception as e:
+        command_str = " ".join(command_list)
+        return "", f"Error executing the command '{command_str}': {e}", 1
+
+# ret = version, revision, path
+def get_core24_info():
+    output, _, code = run_command(["snap", "list", "core24"])
+    if code != 0:
+        return None, None, None
+    lines = output.splitlines()
+    if len(lines) > 1:
+        parts = lines[1].split()
+        if len(parts) >= 3:
+            version, revision = parts[1], parts[2]
+            return version, revision, f"/snap/core24/{revision}"
+    return None, None, None
+
+# ret = name, version
+def parse_version_output(exe_name, version_string):
+    name = "N/A"
+    version = "N/A"
+
+    match = re.match(r'([a-zA-Z0-9]+)_([\d\.]+[a-z]*[\d]*)', version_string)
+    if match:
+        name = match.group(1)
+        version = match.group(2)
+        return name, version
+
+    match = re.search(r'\((.+)\)\s+([\d\.]+[a-z]*[\d]*+)', version_string)
+    if match:
+        name = match.group(1).strip()
+        version = match.group(2)
+        return name, version
+    
+    match = re.search(r'from (.+?)\s+([\d\.]+)', version_string)
+    if match:
+        name = match.group(1).strip()
+        version = match.group(2)
+        return name, version
+        
+    match = re.search(r'^(.+?),\s+version\s+([\d\.]+)', version_string)
+    if match:
+        name = match.group(1).strip()
+        version = match.group(2)
+        return name, version
+    
+    if version_string.startswith("ERROR:"):
+        match = re.search(r'Version ([\d\.]+)$', version_string)
+        if match:
+            version = match.group(1)
+            name = "N/A"
+        return name, version
+
+    match = re.search(r'(\d+\.\d+(\.\d+)?(-[\w\d]+)?)', version_string)
+    if match:
+        name = exe_name
+        version = match.group(1)
+        return name, version
+
+    return "N/A", "N/A"
 
 def cpe_search(cpe):
     headers = {}
@@ -170,6 +325,10 @@ def collector():# Se encarga de recoger nombre, version y fabricante/publisher/v
     pacman_components = pacman_list()
     components.extend(pacman_components)
     msg += f"- Number of pacman-type packages: {len(pacman_components)}\n"
+
+    core24_components = core24_list()
+    components.extend(core24_components)
+    msg += f"- Number of core24 executables: {len(core24_components)}\n"
 
     msg += '========================\n'
     f = open(REPORT_FILENAME, "a")

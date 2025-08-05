@@ -2,34 +2,30 @@ import subprocess
 import os
 import io
 import sys
+import re
 
-# Timeout time established, 5 seconds seems to be good
-COMMAND_TIMEOUT_SECONDS = 5
+# Timeout time established for commands that wait for response
+COMMAND_TIMEOUT_SECONDS = 0.5
 
-def run_command(command, path_env=None, timeout_seconds=COMMAND_TIMEOUT_SECONDS):
-    """
-    Ejecuta un comando en la terminal y devuelve su stdout, stderr y código de retorno.
-    Incluye un tiempo máximo para evitar bloqueos. Esencialmente es un wrapper para sub
-    process.run()
-    """
+# ret = stdout, stderr, ret code 
+def run_command(command_list, timeout_seconds=COMMAND_TIMEOUT_SECONDS):
     try:
-        env = os.environ.copy()
-        result = subprocess.run( command, capture_output=True, text=True, check=False,
-            shell=True, env=env, timeout=timeout_seconds)
+        result = subprocess.run(command_list, capture_output=True, 
+            text=True, check=False, env=os.environ.copy(), timeout=timeout_seconds
+        )
         return result.stdout.strip(), result.stderr.strip(), result.returncode
-    except FileNotFoundError: 
-        ## Error code for command not found : 127
-        return "", f"Comando '{command.split()[0]}' no encontrado.", 127
+    except FileNotFoundError:
+        return "", f"Command '{command_list[0]}' not found.", 127
     except subprocess.TimeoutExpired:
-        ## Error, command timeout
-        return "", f"El comando '{command}' excedió el tiempo de espera de {timeout_seconds} segundos.", 1
+        command_str = " ".join(command_list)
+        return "", f"The command '{command_str}' exceeded the timeout of {timeout_seconds} seconds.", 1
     except Exception as e:
-        ## Other excpetion handling
-        return "", f"Error ejecutando el comando '{command}': {e}", 1
+        command_str = " ".join(command_list)
+        return "", f"Error executing the command '{command_str}': {e}", 1
 
+# ret = version, revision, path
 def get_core24_info():
-    """Return version, revision, and path for core24 snap, or None if not found."""
-    output, _, code = run_command("snap list core24")
+    output, _, code = run_command(["snap", "list", "core24"])
     if code != 0:
         return None, None, None
     lines = output.splitlines()
@@ -40,22 +36,58 @@ def get_core24_info():
             return version, revision, f"/snap/core24/{revision}"
     return None, None, None
 
-def main():
-    print(f"--- Information for core24 Snap ---")
+# ret = name, version
+def parse_version_output(exe_name, version_string):
+    name = "N/A"
+    version = "N/A"
 
+    match = re.match(r'([a-zA-Z0-9]+)_([\d\.]+[a-z]*[\d]*)', version_string)
+    if match:
+        name = match.group(1)
+        version = match.group(2)
+        return name, version
+
+    match = re.search(r'\((.+)\)\s+([\d\.]+[a-z]*[\d]*+)', version_string)
+    if match:
+        name = match.group(1).strip()
+        version = match.group(2)
+        return name, version
+    
+    match = re.search(r'from (.+?)\s+([\d\.]+)', version_string)
+    if match:
+        name = match.group(1).strip()
+        version = match.group(2)
+        return name, version
+        
+    match = re.search(r'^(.+?),\s+version\s+([\d\.]+)', version_string)
+    if match:
+        name = match.group(1).strip()
+        version = match.group(2)
+        return name, version
+    
+    if version_string.startswith("ERROR:"):
+        match = re.search(r'Version ([\d\.]+)$', version_string)
+        if match:
+            version = match.group(1)
+            name = "N/A" # Vendor is unknown in this case
+        return name, version
+
+    match = re.search(r'(\d+\.\d+(\.\d+)?(-[\w\d]+)?)', version_string)
+    if match:
+        name = exe_name
+        version = match.group(1)
+        return name, version
+
+    return "N/A", "N/A"
+
+def executable_versions():
     core24_version, core24_revision, core24_path = get_core24_info()
     bin_path = os.path.join(core24_path, "usr", "bin")
     if not core24_path:
         print("Error: Could not find core24 snap information. Is Ubuntu Core running?")
         return
-
-    print("-" * 50)
-    print(f"Core24 Snap Version: {core24_version}")
-    print(f"Core24 Snap Revision: {core24_revision}")
-    print(f"Core24 Snap Path: {core24_path}")
-    print("-" * 50)
-
-    ## Get a list of the executables that you have access to
+    
+    print(f"CORE 24 VER: {core24_version} - REV: {core24_revision} - PATH {core24_path}")
     executables = []
     try:
         for filename in os.listdir(bin_path):
@@ -66,55 +98,57 @@ def main():
         print(f"Error listing executables in {bin_path}: {e}")
         return
 
-    ## Get amount of available executables to make statistics later on
     total_executables = len(executables)
     versions_found_count = 0
     versions_not_found_count = 0
 
-    print(f"\n--- Attempting to query versions for {total_executables} executables in {bin_path} ---")
-
-    for i, exe in enumerate(executables):
+    for exe in executables:
         full_exe_path = os.path.join(bin_path, exe)
-        version_output = "N/A"
+        version_output = ""
         version_source = "Not Found"
-        error_message = "" # Store customs errors like run_command timeout
+        error_msg = ""
 
-        # Try common version flags
         for flag in ["--version", "-V"]:
-            stdout, stderr, returncode = run_command(f"{full_exe_path} {flag}", path_env=bin_path, timeout_seconds=COMMAND_TIMEOUT_SECONDS)
+            stdout, stderr, returncode = run_command([full_exe_path, flag], timeout_seconds=COMMAND_TIMEOUT_SECONDS)
 
-            ## If one of these 2 errors, break, no point in trying with another flag
             if "timed out" in stderr or "Command not found" in stderr:
-                error_message = stderr
+                error_msg = stderr
                 break
 
-            ## Some older version send version info to stderr
+            ## as version is diagnostic, sent on stderr
             output = stdout if stdout else stderr
-            ## Found a version, move to next executable
             if returncode == 0 and output:
                 version_output = output.strip()
                 version_source = f"'{flag}' flag"
                 break
             elif returncode != 0:
-                ## This could be a permission denied, or other unexpected error.
                 if "unrecognized option" not in stderr.lower() and "invalid option" not in stderr.lower() and "usage" not in stderr.lower():
-                    error_message = stderr
+                    error_msg = stderr
 
-        if version_output != "N/A" and not version_output.startswith("ERROR:"):
-            versions_found_count += 1
+        if version_output:
+            vendor_name, version_number = parse_version_output(exe, version_output)
+            if version_number != "N/A":
+                versions_found_count += 1
+            else:
+                versions_not_found_count += 1
+        elif error_msg:
+            version_output = f"ERROR: {error_msg}"
+            version_source = "Error"
+            vendor_name, version_number = parse_version_output(exe, version_output)
+            if version_number != "N/A":
+                versions_found_count += 1
+            else:
+                versions_not_found_count += 1
         else:
+            vendor_name = "N/A"
+            version_number = "N/A"
             versions_not_found_count += 1
-            # If no version was found but an error occurred during attempts, set error message
-            if not version_output.startswith("ERROR:") and error_message:
-                 version_output = f"ERROR: {error_message}"
-                 version_source = "Error"
-            elif not error_message: # If still N/A and no explicit error message
-                version_output = "N/A (No version flag responded)"
+            version_output = "N/A (No version flag responded)"
 
-        print(f"Executable: {exe}")
-        display_version = version_output.splitlines()[0] if version_output != "N/A" and not version_output.startswith("ERROR:") else version_output
-        print(f"  Version: {display_version}")
-        print(f"  Source: {version_source}")
+        print(f"{'Executable:':<15} {exe}")
+        print(f"{'  Vendor:':<15} {vendor_name}")
+        print(f"{'  Version:':<15} {version_number}")
+        print(f"{'  Source:':<15} {version_source}")
         print("-" * 30)
 
     print("\n--- Summary ---")
@@ -126,5 +160,8 @@ def main():
     print(f"Percentage of versions not found: {percentage_not_found:.2f}%")
     print("\n--- End of Report ---")
 
+def main():
+    executable_versions()
+    
 if __name__ == "__main__":
     main()
