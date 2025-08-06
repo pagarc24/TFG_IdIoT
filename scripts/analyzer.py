@@ -482,11 +482,12 @@ def system_report(components):
     else:
         for i in range(N_COMPONENTS):
             e = components[i]
-            if e['cpe'] not in EXPLORED_CPES:
+            cpe_string = e.get('cpe')
+            if cpe_string not in EXPLORED_CPES:
                 analysis = f"{component_analysis(e)}\n"
                 f.write(analysis)
                 loading_bar(i+1, N_COMPONENTS, 'Analyzing components', 'Completed')
-                EXPLORED_CPES.add(['cpe'])
+                EXPLORED_CPES.add(cpe_string)
     f.close()
 
 def loading_bar(it, total, pre, suf):
