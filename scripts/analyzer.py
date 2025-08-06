@@ -149,7 +149,7 @@ def executables_list(source=None):
     try:
         executables_list = []
         executables_found = []
-        bin_path = os.path.join(source, "usr", "bin") if source is not None else os.path.join("usr", "bin")
+        bin_path = os.path.join(source, "usr", "bin") if source is not None else os.path.join("/usr", "bin")
         executables_found = get_executables(bin_path)
 
         versions_found_count = 0
