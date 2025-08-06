@@ -144,21 +144,17 @@ def get_executables(bin_path):
         return
     return executables
     
-def core24_list():
+# in: source
+def executables_list(source=None):
     try:
         executables_list = []
-        executables_core24 = []
-        core24_version, core24_revision, core24_path = get_core24_info()
-        bin_path = os.path.join(core24_path, "usr", "bin")
-        if not core24_path:
-            print("Error: Could not find core24 snap information. Is Ubuntu Core running?")
-            return
-        
-        executables_core24 = get_executables(bin_path)
+        executables_found = []
+        bin_path = os.path.join(source, "usr", "bin") if source is not None else os.path.join("usr", "bin")
+        executables_found = get_executables(bin_path)
 
         versions_found_count = 0
         versions_not_found_count = 0
-        for exe in executables_core24:
+        for exe in executables_found:
             full_exe_path = os.path.join(bin_path, exe)
             version_output = ""
             error_msg = ""
@@ -328,9 +324,15 @@ def collector():# Se encarga de recoger nombre, version y fabricante/publisher/v
     components.extend(pacman_components)
     msg += f"- Number of pacman-type packages: {len(pacman_components)}\n"
 
-    core24_components = core24_list()
+    _, _, core24_path = get_core24_info()
+    core24_components = executables_list(core24_path)
     components.extend(core24_components)
     msg += f"- Number of core24 executables: {len(core24_components)}\n"
+
+    executable_components = executables_list()
+    components.extend(executable_components)
+    msg += f"- Number of /usr/bin/ executables: {len(executable_components)}\n"
+
 
     msg += '========================\n'
     f = open(REPORT_FILENAME, "a")
