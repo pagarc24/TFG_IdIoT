@@ -21,9 +21,11 @@ REPORT_FILENAME = "system_analysis.txt"
 
 HIGHLIGHT_REPORT = ''
 
+
 N_COMPONENTS = 0
 N_VULNERABILITIES = 0
 N_VULNERABILITIES_HIGHLIGHTED = 0
+EXPLORED_CPES = set()
 
 CWE_DICT = {}
 
@@ -469,6 +471,7 @@ def component_analysis(component):
 
 def system_report(components):
     global N_COMPONENTS
+    global EXPLORED_CPES
 
     f = open(REPORT_FILENAME, 'a')
     N_COMPONENTS = len(components)
@@ -479,9 +482,11 @@ def system_report(components):
     else:
         for i in range(N_COMPONENTS):
             e = components[i]
-            analysis = f"{component_analysis(e)}\n"
-            f.write(analysis)
-            loading_bar(i+1, N_COMPONENTS, 'Analyzing components', 'Completed')
+            if e['cpe'] not in EXPLORED_CPES:
+                analysis = f"{component_analysis(e)}\n"
+                f.write(analysis)
+                loading_bar(i+1, N_COMPONENTS, 'Analyzing components', 'Completed')
+                EXPLORED_CPES.add(['cpe'])
     f.close()
 
 def loading_bar(it, total, pre, suf):
