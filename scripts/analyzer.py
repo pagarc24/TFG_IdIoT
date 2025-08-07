@@ -14,6 +14,7 @@ COMMAND_TIMEOUT_SECONDS = 0.5
 
 # Configutation of API requests
 NVD_API_BASE_URL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
+
 # API key for NVD API access
 NVD_API_KEY = "ENTER_API"
 
@@ -28,6 +29,8 @@ N_VULNERABILITIES_HIGHLIGHTED = 0
 EXPLORED_CPES = set()
 
 CWE_DICT = {}
+
+SOURCE_VULS = {}
 
 def pacman_list():
     try:
@@ -49,7 +52,8 @@ def pacman_list():
                     'name': name,
                     'version': version,
                     'publisher': publisher,
-                    'cpe': cpe
+                    'cpe': cpe,
+                    'source': 'pacman'
                 })
         return paquetes_pacman
     except:
@@ -76,7 +80,8 @@ def apt_list():
                     'name': name,
                     'version': version,
                     'publisher': publisher,
-                    'cpe': cpe
+                    'cpe': cpe,
+                    'source': 'apt'
                 })
         return paquetes_apt
     except:
@@ -103,7 +108,8 @@ def dpkg_list():
                     'name': name,
                     'version': version,
                     'publisher': publisher,
-                    'cpe': cpe
+                    'cpe': cpe,
+                    'source': 'dpkg'
                 })
         return paquetes_dpkg
     except:
@@ -113,10 +119,10 @@ def snap_list():
     try:
         paquetes_snap = []
         process = subprocess.run(['snap', 'list'], capture_output=True, text=True)
-        out = process.stdout.strip().split('\n')[1:]#Quitamos la primera con los nombres de las columnas
+        out = process.stdout.strip().split('\n')[1:]#Column's name
         
         for paquete in out:
-            carac = paquete.split(maxsplit=5)#Extraemos las distintas caracteristicas
+            carac = paquete.split(maxsplit=5)
             if len(carac) >= 5:
                 name = carac[0]
                 version = carac[1]
@@ -126,7 +132,8 @@ def snap_list():
                     'name': name,
                     'version': version,
                     'publisher': publisher,
-                    'cpe': cpe
+                    'cpe': cpe,
+                    'source': 'snap'
                 })
         return paquetes_snap
     except:
@@ -144,7 +151,7 @@ def get_executables(bin_path):
         return
     return executables
     
-# in: source
+
 def executables_list(source=None):
     try:
         executables_list = []
@@ -166,7 +173,6 @@ def executables_list(source=None):
                     error_msg = stderr
                     break
 
-                ## as version is diagnostic, sent on stderr
                 output = stdout if stdout else stderr
                 if returncode == 0 and output:
                     version_output = output.strip()
@@ -200,7 +206,8 @@ def executables_list(source=None):
                     'name': name.lower(),
                     'version': version.lower(),
                     'publisher': "*",
-                    'cpe': cpe
+                    'cpe': cpe,
+                    'source': bin_path
                 })
         return executables_list
     except:
@@ -208,18 +215,17 @@ def executables_list(source=None):
 
 def cpe_constructor(name, version, publisher):
     CPE_NAME="cpe:2.3"
-    CPE_PART="a" #Application, siempre en nuestro caso
+    CPE_PART="a" #Application
     CPE_VENDOR=publisher
     CPE_PRODUCT=name
     CPE_PRODUCT_VERSION=version
 
     res = CPE_NAME+":"+CPE_PART+":"+CPE_VENDOR+":"+CPE_PRODUCT+":"+CPE_PRODUCT_VERSION
-    # Se añaden comodines representan los campos [update]:[edition]:[language]:[sw_edition]:[target_sw]:[target_hw]:[other]
+    # Next wildcards -> [update]:[edition]:[language]:[sw_edition]:[target_sw]:[target_hw]:[other]
     res = res + ":*:*:*:*:*:*:*"
 
     return res
 
-# ret = stdout, stderr, ret code 
 def run_command(command_list, timeout_seconds=COMMAND_TIMEOUT_SECONDS):
     try:
         result = subprocess.run(command_list, capture_output=True, 
@@ -235,7 +241,6 @@ def run_command(command_list, timeout_seconds=COMMAND_TIMEOUT_SECONDS):
         command_str = " ".join(command_list)
         return "", f"Error executing the command '{command_str}': {e}", 1
 
-# ret = version, revision, path
 def get_core24_info():
     output, _, code = run_command(["snap", "list", "core24"])
     if code != 0:
@@ -248,7 +253,6 @@ def get_core24_info():
             return version, revision, f"/snap/core24/{revision}"
     return None, None, None
 
-# ret = name, version
 def parse_version_output(exe_name, version_string):
     name = "N/A"
     version = "N/A"
@@ -302,9 +306,11 @@ def cpe_search(cpe):
     response = requests.get(NVD_API_BASE_URL, headers=headers, params=params)
     return response.json() if 200<=response.status_code<300 else None
 
-def collector():# Se encarga de recoger nombre, version y fabricante/publisher/vendor de distintos gestores
+def collector():# Collects name, version and publisher of diferent components of different package managers
 
     msg = '========PACKAGES========\n'
+
+    print("Discovering all the different components that make up the system")
 
     components=[]
 
@@ -312,7 +318,7 @@ def collector():# Se encarga de recoger nombre, version y fabricante/publisher/v
     components.extend(snap_components)
     msg += f"- Number of snap-type packages: {len(snap_components)}\n"
 
-    dpkg_components = []
+    dpkg_components = dpkg_list()
     components.extend(dpkg_components)
     msg += f"- Number of dpkg-type packages: {len(dpkg_components)}\n"
 
@@ -451,6 +457,7 @@ def must_be_highlighted(score_category, vectorstring, cwe):
 
 def component_analysis(component):
     global N_VULNERABILITIES
+    global SOURCE_VULS
 
     analysis = f"\t{component['name']}\n"
     analysis += f"- Vendor: {component['publisher']}\n"
@@ -466,7 +473,10 @@ def component_analysis(component):
     else:
         analysis += f"- Number of vulnerabilities: {nres}\n"
         vuls = vuls['vulnerabilities']
-        N_VULNERABILITIES += len(vuls)
+        nvuls = len(vuls)
+        N_VULNERABILITIES += nvuls
+        source = component['source']
+        SOURCE_VULS[source] = SOURCE_VULS.get(source, 0) + nvuls
         for v in vuls:
             analysis += f"\n{vulnerability_report(v)}\n"
     return analysis
@@ -563,6 +573,13 @@ if __name__ == "__main__":
         h_msg += "=========================\n"
         print(h_msg)
     
+    source_vuls_report = ''
+    for source, n in SOURCE_VULS.items():
+        source_vuls_report += f"\t- Vulnerabilities detected from {source}: {n}\n"
+    
+    if source_vuls_report != '':
+        source_vuls_report = source_vuls_report[:-1]
+
     duration=datetime.datetime.now()-duration
     total_segundos = duration.total_seconds()
     min, sec = divmod(total_segundos, 60)
@@ -573,5 +590,6 @@ if __name__ == "__main__":
     - Analyzed components: {N_COMPONENTS}
     - Detected vulnerabilities: {N_VULNERABILITIES}
     - Number of significant detected vulnerabilities: {N_VULNERABILITIES_HIGHLIGHTED}
+    {source_vuls_report}
     - Execution time: {min} minutes and {sec} seconds"""
     print(summary)
