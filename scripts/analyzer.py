@@ -155,60 +155,66 @@ def executables_list(source=None):
     try:
         executables_list = []
         executables_found = []
-        bin_path = os.path.join(source, "usr", "bin") if source is not None else os.path.join("/usr", "bin")
-        executables_found = get_executables(bin_path)
 
-        versions_found_count = 0
-        versions_not_found_count = 0
-        for exe in executables_found:
-            full_exe_path = os.path.join(bin_path, exe)
-            version_output = ""
-            error_msg = ""
+        find_command = ["find", source, "-type", "d", "-name", "bin"]
+        
+        res = subprocess.run(find_command, capture_output=True, text=True, check=True)
+        bin_paths = res.stdout.strip().split('\n')
+        bin_paths = [path for path in bin_paths if "share" not in path.split(os.sep)]
 
-            for flag in ["--version", "-V"]:
-                stdout, stderr, returncode = run_command([full_exe_path, flag], timeout_seconds=COMMAND_TIMEOUT_SECONDS)
+        for bin_path in bin_paths:
+            executables_found = get_executables(bin_path)
+            versions_found_count = 0
+            versions_not_found_count = 0
+            for exe in executables_found:
+                full_exe_path = os.path.join(bin_path, exe)
+                version_output = ""
+                error_msg = ""
 
-                if "timed out" in stderr or "Command not found" in stderr:
-                    error_msg = stderr
-                    break
+                for flag in ["--version", "-V"]:
+                    stdout, stderr, returncode = run_command([full_exe_path, flag], timeout_seconds=COMMAND_TIMEOUT_SECONDS)
 
-                output = stdout if stdout else stderr
-                if returncode == 0 and output:
-                    version_output = output.strip()
-                    break
-                elif returncode != 0:
-                    if "unrecognized option" not in stderr.lower() and "invalid option" not in stderr.lower() and "usage" not in stderr.lower():
+                    if "timed out" in stderr or "Command not found" in stderr:
                         error_msg = stderr
+                        break
 
-            if version_output:
-                name, version = parse_version_output(exe, version_output)
-                if version != "N/A":
-                    versions_found_count += 1
-                else:
-                    versions_not_found_count += 1
-            elif error_msg:
-                version_output = f"ERROR: {error_msg}"
-                name, version = parse_version_output(exe, version_output)
-                if version != "N/A":
-                    versions_found_count += 1
-                else:
-                    versions_not_found_count += 1
-            else:
-                name = "N/A"
-                version = "N/A"
-                versions_not_found_count += 1
-                version_output = "N/A (No version flag responded)"
+                    output = stdout if stdout else stderr
+                    if returncode == 0 and output:
+                        version_output = output.strip()
+                        break
+                    elif returncode != 0:
+                        if "unrecognized option" not in stderr.lower() and "invalid option" not in stderr.lower() and "usage" not in stderr.lower():
+                            error_msg = stderr
 
-            if name != "N/A" and version != "N/A":
-                cpe = cpe_constructor(name.lower() ,version.lower() , "*")
-                executables_list.append({
-                    'name': name.lower(),
-                    'version': version.lower(),
-                    'publisher': "*",
-                    'cpe': cpe,
-                    'source': bin_path
-                })
-        return executables_list
+                if version_output:
+                    name, version = parse_version_output(exe, version_output)
+                    if version != "N/A":
+                        versions_found_count += 1
+                    else:
+                        versions_not_found_count += 1
+                elif error_msg:
+                    version_output = f"ERROR: {error_msg}"
+                    name, version = parse_version_output(exe, version_output)
+                    if version != "N/A":
+                        versions_found_count += 1
+                    else:
+                        versions_not_found_count += 1
+                else:
+                    name = "N/A"
+                    version = "N/A"
+                    versions_not_found_count += 1
+                    version_output = "N/A (No version flag responded)"
+
+                if name != "N/A" and version != "N/A":
+                    cpe = cpe_constructor(name.lower() ,version.lower() , "*")
+                    executables_list.append({
+                        'name': name.lower(),
+                        'version': version.lower(),
+                        'publisher': "*",
+                        'cpe': cpe,
+                        'source': bin_path
+                    })
+            return executables_list
     except:
         return []
 
