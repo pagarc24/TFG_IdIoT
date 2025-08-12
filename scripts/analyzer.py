@@ -64,7 +64,6 @@ def apt_list():
         paquetes_apt = []
         process = subprocess.run(['apt', 'list', '--installed'], capture_output=True, text=True)
         out = process.stdout.strip().split('\n')[1:]
-
         for paquete in out:
             if '/' not in paquete:
                 continue
@@ -241,8 +240,8 @@ def run_command(command_list, timeout_seconds=COMMAND_TIMEOUT_SECONDS):
         command_str = " ".join(command_list)
         return "", f"Error executing the command '{command_str}': {e}", 1
 
-def get_core24_info():
-    output, _, code = run_command(["snap", "list", "core24"])
+def get_snap_package_info(name):
+    output, _, code = run_command(["snap", "list", name])
     if code != 0:
         return None, None, None
     lines = output.splitlines()
@@ -250,7 +249,7 @@ def get_core24_info():
         parts = lines[1].split()
         if len(parts) >= 3:
             version, revision = parts[1], parts[2]
-            return version, revision, f"/snap/core24/{revision}"
+            return version, revision, f"/snap/{name}/{revision}"
     return None, None, None
 
 def parse_version_output(exe_name, version_string):
@@ -330,10 +329,13 @@ def collector():# Collects name, version and publisher of diferent components of
     components.extend(pacman_components)
     msg += f"- Number of pacman-type packages: {len(pacman_components)}\n"
 
-    _, _, core24_path = get_core24_info()
-    core24_components = executables_list(core24_path)
-    components.extend(core24_components)
-    msg += f"- Number of core24 executables: {len(core24_components)}\n"
+    for i in range(len(snap_components)):
+        e = snap_components[i]
+        package_name = e.get('name')
+        _, _, snap_package_path = get_snap_package_info(package_name)
+        snap_package_components = executables_list(snap_package_path)
+        components.extend(snap_package_components)
+        msg += f"- Number of {package_name} executables: {len(snap_package_components)}\n"
 
     executable_components = executables_list()
     components.extend(executable_components)
