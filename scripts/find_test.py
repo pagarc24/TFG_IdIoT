@@ -151,12 +151,12 @@ def get_executables(bin_path):
     return executables
     
 
-def executables_list():
+def executables_list(source="/usr"):
     try:
         executables_list = []
         executables_found = []
 
-        find_command = ["sudo", "find", "/", "-type", "d", "-name", "bin"]
+        find_command = ["find", source, "-type", "d", "-name", "bin"]
         
         res = subprocess.run(find_command, capture_output=True, text=True, check=True)
         bin_paths = res.stdout.strip().split('\n')
@@ -335,9 +335,18 @@ def collector():# Collects name, version and publisher of diferent components of
     components.extend(pacman_components)
     msg += f"- Number of pacman-type packages: {len(pacman_components)}\n"
 
+    for i in range(len(snap_components)):
+        e = snap_components[i]
+        package_name = e.get('name')
+        _, _, snap_package_path = get_snap_package_info(package_name)
+        snap_package_components = executables_list(snap_package_path)
+        components.extend(snap_package_components)
+        msg += f"- Number of {package_name} executables: {len(snap_package_components)}\n"
+
     executable_components = executables_list()
     components.extend(executable_components)
-    msg += f"- Number of / executables: {len(executable_components)}\n"
+    msg += f"- Number of /usr/bin/ executables: {len(executable_components)}\n"
+
 
     msg += '========================\n'
     f = open(REPORT_FILENAME, "a")
